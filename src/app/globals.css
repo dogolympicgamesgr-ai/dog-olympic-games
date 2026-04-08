@@ -1,26 +1,100 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0a0f1e;
+  --bg-card: #162033;
+  --bg-card-hover: #1a2337;
+  --accent: #e8b94f;
+  --accent-hover: #f5cc72;
+  --text-primary: #f0f4ff;
+  --text-secondary: #8a9bb5;
+  --border: #2a3f5f;
+  --nav-height: 64px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Outfit', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .display {
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 0.04em;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.section-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.75rem 1.5rem;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+.section-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-card-hover);
+  transform: translateY(-2px);
+}
+.hero-btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 0.85rem 2rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  transition: background 0.2s;
+}
+.hero-btn-primary:hover { background: var(--accent-hover); }
+.hero-btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  padding: 0.85rem 2rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  transition: border-color 0.2s, color 0.2s;
+}
+.hero-btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.section-card h3,
+.section-card p,
+.section-card span {
+  color: inherit;
+}
+
+.section-card {
+  color: var(--text-primary);
 }
