@@ -40,7 +40,6 @@ export default function Navbar() {
   const communityRef = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (aboutRef.current && !aboutRef.current.contains(e.target as Node)) setAboutOpen(false)
@@ -51,21 +50,15 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Close mobile menu on route change
   useEffect(() => { setMobileOpen(false) }, [pathname])
 
   useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
-      if (user) await loadUserData(user.id)
-    }
-    init()
-
+    // Use onAuthStateChange only — no getUser() race condition
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        await loadUserData(session.user.id)
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
+      if (currentUser) {
+        await loadUserData(currentUser.id)
       } else {
         setProfileName('')
         setIsAdmin(false)
@@ -92,11 +85,12 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     setUserMenuOpen(false)
+    setMobileOpen(false)
     await supabase.auth.signOut()
     router.push('/')
+    router.refresh()
   }
 
-  // Display name: full_name from DB, fallback to email prefix
   const displayName = profileName || user?.email?.split('@')[0] || ''
   const firstName = displayName.split(' ')[0]
 
@@ -160,7 +154,7 @@ export default function Navbar() {
       gap: '1rem',
     }}>
 
-      {/* LEFT — hamburger (dashboard only) + logo */}
+      {/* LEFT */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
         {isDashboard && user && (
           <button
@@ -178,10 +172,8 @@ export default function Navbar() {
         </Link>
       </div>
 
-      {/* CENTER — dropdowns */}
+      {/* CENTER */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }} className="desktop-nav">
-
-        {/* About dropdown */}
         <div ref={aboutRef} style={{ position: 'relative' }}>
           <button style={navBtnStyle(aboutActive)} onClick={() => { setAboutOpen(!aboutOpen); setCommunityOpen(false); setUserMenuOpen(false) }}>
             {t('Σχετικά', 'About')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
@@ -197,7 +189,6 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* Community dropdown */}
         <div ref={communityRef} style={{ position: 'relative' }}>
           <button style={navBtnStyle(communityActive)} onClick={() => { setCommunityOpen(!communityOpen); setAboutOpen(false); setUserMenuOpen(false) }}>
             {t('Κοινότητα', 'Community')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
@@ -212,13 +203,10 @@ export default function Navbar() {
             </div>
           )}
         </div>
-
       </div>
 
-      {/* RIGHT — lang + admin + user menu + mobile hamburger */}
+      {/* RIGHT */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-
-        {/* Language toggle */}
         <button onClick={() => setLang(lang === 'el' ? 'en' : 'el')} style={{
           background: 'var(--bg-card)', border: '1px solid var(--border)',
           borderRadius: '6px', padding: '0.3rem 0.6rem',
@@ -229,45 +217,41 @@ export default function Navbar() {
         </button>
 
         {user ? (
-          <>
-           
-           {/* User menu dropdown */}
-            <div ref={userRef} style={{ position: 'relative' }}>
-              <button
-                onClick={() => { setUserMenuOpen(!userMenuOpen); setAboutOpen(false); setCommunityOpen(false) }}
-                style={{
-                  background: 'var(--accent)', border: 'none', borderRadius: '6px',
-                  padding: '0.4rem 0.85rem', color: 'var(--bg)', fontSize: '0.85rem',
-                  fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                }}
-              >
-                {firstName || t('Προφίλ', 'Profile')}
-                <span style={{ fontSize: '0.65rem' }}>▼</span>
-              </button>
-              {userMenuOpen && (
-                <div style={{ ...dropdownStyle, left: 'auto', right: 0, transform: 'none', minWidth: '160px' }}>
-                  <Link href="/dashboard" style={dropdownLinkStyle(pathname === '/dashboard')} onClick={() => setUserMenuOpen(false)}>
-                    🏠 {t('Dashboard', 'Dashboard')}
+          <div ref={userRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => { setUserMenuOpen(!userMenuOpen); setAboutOpen(false); setCommunityOpen(false) }}
+              style={{
+                background: 'var(--accent)', border: 'none', borderRadius: '6px',
+                padding: '0.4rem 0.85rem', color: 'var(--bg)', fontSize: '0.85rem',
+                fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+              }}
+            >
+              {firstName || t('Προφίλ', 'Profile')}
+              <span style={{ fontSize: '0.65rem' }}>▼</span>
+            </button>
+            {userMenuOpen && (
+              <div style={{ ...dropdownStyle, left: 'auto', right: 0, transform: 'none', minWidth: '160px' }}>
+                <Link href="/dashboard" style={dropdownLinkStyle(pathname === '/dashboard')} onClick={() => setUserMenuOpen(false)}>
+                  🏠 {t('Dashboard', 'Dashboard')}
+                </Link>
+                {isAdmin && (
+                  <Link href="/admin" style={dropdownLinkStyle(pathname === '/admin')} onClick={() => setUserMenuOpen(false)}>
+                    ⚙️ Admin Panel
                   </Link>
-                  {isAdmin && (
-                    <Link href="/admin" style={dropdownLinkStyle(pathname === '/admin')} onClick={() => setUserMenuOpen(false)}>
-                      ⚙️ Admin Panel
-                    </Link>
-                  )}
-                  <button onClick={handleLogout} style={{
-                    width: '100%', background: 'none', border: 'none',
-                    padding: '0.6rem 1rem', borderRadius: '6px',
-                    color: '#f77e7e', fontSize: '0.88rem', cursor: 'pointer',
-                    textAlign: 'left', fontFamily: 'Outfit, sans-serif',
-                    marginTop: '0.25rem', borderTop: '1px solid var(--border)',
-                  }}>
-                    🚪 {t('Αποσύνδεση', 'Logout')}
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
+                )}
+                <button onClick={handleLogout} style={{
+                  width: '100%', background: 'none', border: 'none',
+                  padding: '0.6rem 1rem', borderRadius: '6px',
+                  color: '#f77e7e', fontSize: '0.88rem', cursor: 'pointer',
+                  textAlign: 'left', fontFamily: 'Outfit, sans-serif',
+                  marginTop: '0.25rem', borderTop: '1px solid var(--border)',
+                }}>
+                  🚪 {t('Αποσύνδεση', 'Logout')}
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           <button onClick={handleLogin} style={{
             background: 'var(--accent)', border: 'none', borderRadius: '6px',
@@ -278,7 +262,6 @@ export default function Navbar() {
           </button>
         )}
 
-        {/* Mobile hamburger */}
         <button onClick={() => setMobileOpen(!mobileOpen)} className="hamburger" style={{
           background: 'none', border: 'none', color: 'var(--text-primary)',
           cursor: 'pointer', fontSize: '1.3rem', display: 'none', padding: '0.2rem',
@@ -316,11 +299,11 @@ export default function Navbar() {
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.5rem 0 0.25rem', marginTop: '0.5rem' }}>
                 {firstName}
               </p>
-              <Link href="/dashboard" style={{ padding: '0.6rem 0', color: 'var(--text-primary)', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }}>
+              <Link href="/dashboard" style={{ padding: '0.6rem 0', color: 'var(--text-primary)', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }} onClick={() => setMobileOpen(false)}>
                 🏠 Dashboard
               </Link>
               {isAdmin && (
-                <Link href="/admin" style={{ padding: '0.6rem 0', color: '#f77e7e', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }}>
+                <Link href="/admin" style={{ padding: '0.6rem 0', color: 'var(--accent)', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }} onClick={() => setMobileOpen(false)}>
                   ⚙️ Admin Panel
                 </Link>
               )}
