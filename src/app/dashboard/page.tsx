@@ -35,6 +35,7 @@ export default function DashboardPage() {
   }, [])
 
   async function loadDashboard() {
+  try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/'); return }
 
@@ -46,13 +47,23 @@ export default function DashboardPage() {
       supabase.from('competition_results').select('*, events(*), dogs(name)').eq('owner_id', user.id).eq('status', 'approved').order('created_at', { ascending: false }),
     ])
 
+    console.log('profileRes:', profileRes)
+    console.log('rolesRes:', rolesRes)
+    console.log('teamMemberRes:', teamMemberRes)
+    console.log('dogsRes:', dogsRes)
+    console.log('resultsRes:', resultsRes)
+
     setProfile(profileRes.data)
     setRoles(rolesRes.data?.map((r: any) => r.role) || [])
     setTeam(teamMemberRes.data?.teams || null)
     setDogs(dogsRes.data || [])
     setResults(resultsRes.data || [])
     setLoading(false)
+  } catch (err) {
+    console.error('loadDashboard error:', err)
+    setLoading(false)
   }
+}
 
   if (loading) return (
     <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
