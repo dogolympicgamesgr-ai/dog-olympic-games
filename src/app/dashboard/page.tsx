@@ -46,10 +46,9 @@ useEffect(() => {
   }
   init()
 
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_OUT') {
-      router.push('/')
-    }
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') router.push('/')
+    if (event === 'SIGNED_IN') init()
   })
   return () => subscription.unsubscribe()
 }, [])

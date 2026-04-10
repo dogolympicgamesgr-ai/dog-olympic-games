@@ -56,10 +56,11 @@ useEffect(() => {
   async function init() {
     try {
       const res = await fetch('/auth/session')
-      const { user } = await res.json()
+      const { user, profile, isAdmin } = await res.json()
       if (user) {
         setUser(user)
-        await loadUserData(user.id)
+        setProfileName(profile?.full_name || '')
+        setIsAdmin(isAdmin)
       }
     } catch (err) {
       console.error('session fetch error:', err)
@@ -67,15 +68,20 @@ useEffect(() => {
   }
   init()
 
-  // Still listen for changes (logout, etc.)
   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
     const currentUser = session?.user ?? null
     setUser(currentUser)
-    if (currentUser) {
-      await loadUserData(currentUser.id)
-    } else {
+    if (!currentUser) {
       setProfileName('')
       setIsAdmin(false)
+    } else {
+      // Re-fetch from server on auth change
+      try {
+        const res = await fetch('/auth/session')
+        const { profile, isAdmin } = await res.json()
+        setProfileName(profile?.full_name || '')
+        setIsAdmin(isAdmin)
+      } catch {}
     }
   })
   return () => subscription.unsubscribe()
