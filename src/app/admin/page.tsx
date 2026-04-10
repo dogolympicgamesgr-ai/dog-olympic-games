@@ -33,7 +33,7 @@ export default function AdminPage() {
  useEffect(() => {
   async function init() {
     try {
-      const res = await fetch('/api/auth/session')
+      const res = await fetch('/auth/session')
       const { user } = await res.json()
       if (!user) { router.push('/'); return }
       const { data } = await supabase

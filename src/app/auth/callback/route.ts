@@ -27,10 +27,5 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  return new NextResponse(
-    `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <script>window.location.replace('/dashboard')</script>
-    </head><body></body></html>`,
-    { status: 200, headers: { 'Content-Type': 'text/html' } }
-  )
+  return NextResponse.redirect(`${origin}/dashboard`)
 }

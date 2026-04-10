@@ -21,38 +21,30 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // CRITICAL: do not add logic between createServerClient and getUser
   const { data: { user } } = await supabase.auth.getUser()
 
   if (request.nextUrl.pathname.startsWith('/admin')) {
     if (!user) {
-      const redirectResponse = NextResponse.redirect(new URL('/', request.url))
-      supabaseResponse.cookies.getAll().forEach(cookie => {
-        redirectResponse.cookies.set(cookie.name, cookie.value)
-      })
-      return redirectResponse
+      const url = request.nextUrl.clone()
+      url.pathname = '/'
+      return NextResponse.redirect(url)
     }
     const { data: adminRole } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'admin')
-      .maybeSingle()
+      .from('user_roles').select('role')
+      .eq('user_id', user.id).eq('role', 'admin').maybeSingle()
     if (!adminRole) {
-      const redirectResponse = NextResponse.redirect(new URL('/dashboard', request.url))
-      supabaseResponse.cookies.getAll().forEach(cookie => {
-        redirectResponse.cookies.set(cookie.name, cookie.value)
-      })
-      return redirectResponse
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
     }
   }
 
   if (request.nextUrl.pathname.startsWith('/dashboard')) {
     if (!user) {
-      const redirectResponse = NextResponse.redirect(new URL('/', request.url))
-      supabaseResponse.cookies.getAll().forEach(cookie => {
-        redirectResponse.cookies.set(cookie.name, cookie.value)
-      })
-      return redirectResponse
+      const url = request.nextUrl.clone()
+      url.pathname = '/'
+      return NextResponse.redirect(url)
     }
   }
 
