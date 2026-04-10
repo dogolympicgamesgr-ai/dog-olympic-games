@@ -98,12 +98,11 @@ async function loadUserData(userId: string) {
   }
 
   const handleLogout = async () => {
-    setUserMenuOpen(false)
-    setMobileOpen(false)
-    await supabase.auth.signOut()
-    router.push('/')
-    router.refresh()
-  }
+  setUserMenuOpen(false)
+  setMobileOpen(false)
+  await supabase.auth.signOut()
+  window.location.href = '/'
+}
 
   const displayName = profileName || user?.email?.split('@')[0] || ''
   const firstName = displayName.split(' ')[0]
