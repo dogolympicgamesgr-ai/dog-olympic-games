@@ -26,6 +26,7 @@ export default function Navbar() {
   const { lang, setLang, t } = useLang()
   const [user, setUser] = useState<User | null>(null)
   const [profileName, setProfileName] = useState<string>('')
+  const [nameReady, setNameReady] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -53,15 +54,17 @@ export default function Navbar() {
   useEffect(() => { setMobileOpen(false) }, [pathname])
 
   useEffect(() => {
-    // Use onAuthStateChange only — no getUser() race condition
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null
       setUser(currentUser)
       if (currentUser) {
+        setNameReady(false)
         await loadUserData(currentUser.id)
+        setNameReady(true)
       } else {
         setProfileName('')
         setIsAdmin(false)
+        setNameReady(false)
       }
     })
     return () => subscription.unsubscribe()
@@ -94,6 +97,9 @@ export default function Navbar() {
   const displayName = profileName || user?.email?.split('@')[0] || ''
   const firstName = displayName.split(' ')[0]
 
+  // While loading user data show a neutral button
+  const buttonLabel = !nameReady && user ? '...' : (firstName || t('Προφίλ', 'Profile'))
+
   const dropdownStyle = {
     position: 'absolute' as const,
     top: 'calc(100% + 8px)',
@@ -122,19 +128,12 @@ export default function Navbar() {
   })
 
   const navBtnStyle = (active: boolean) => ({
-    background: 'none',
-    border: 'none',
-    padding: '0.4rem 0.75rem',
-    borderRadius: '6px',
+    background: 'none', border: 'none',
+    padding: '0.4rem 0.75rem', borderRadius: '6px',
     color: active ? 'var(--accent)' : 'var(--text-secondary)',
-    fontSize: '0.88rem',
-    fontWeight: 500,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.3rem',
-    fontFamily: 'Outfit, sans-serif',
-    letterSpacing: '0.02em',
+    fontSize: '0.88rem', fontWeight: 500, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: '0.3rem',
+    fontFamily: 'Outfit, sans-serif', letterSpacing: '0.02em',
   })
 
   const aboutActive = aboutLinks.some(l => pathname === l.href)
@@ -188,7 +187,6 @@ export default function Navbar() {
             </div>
           )}
         </div>
-
         <div ref={communityRef} style={{ position: 'relative' }}>
           <button style={navBtnStyle(communityActive)} onClick={() => { setCommunityOpen(!communityOpen); setAboutOpen(false); setUserMenuOpen(false) }}>
             {t('Κοινότητα', 'Community')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
@@ -219,18 +217,20 @@ export default function Navbar() {
         {user ? (
           <div ref={userRef} style={{ position: 'relative' }}>
             <button
-              onClick={() => { setUserMenuOpen(!userMenuOpen); setAboutOpen(false); setCommunityOpen(false) }}
+              onClick={() => { if (!nameReady) return; setUserMenuOpen(!userMenuOpen); setAboutOpen(false); setCommunityOpen(false) }}
               style={{
                 background: 'var(--accent)', border: 'none', borderRadius: '6px',
                 padding: '0.4rem 0.85rem', color: 'var(--bg)', fontSize: '0.85rem',
-                fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
+                fontWeight: 700, cursor: nameReady ? 'pointer' : 'default',
+                fontFamily: 'Outfit, sans-serif',
                 display: 'flex', alignItems: 'center', gap: '0.3rem',
+                opacity: nameReady ? 1 : 0.7,
               }}
             >
-              {firstName || t('Προφίλ', 'Profile')}
-              <span style={{ fontSize: '0.65rem' }}>▼</span>
+              {buttonLabel}
+              {nameReady && <span style={{ fontSize: '0.65rem' }}>▼</span>}
             </button>
-            {userMenuOpen && (
+            {userMenuOpen && nameReady && (
               <div style={{ ...dropdownStyle, left: 'auto', right: 0, transform: 'none', minWidth: '160px' }}>
                 <Link href="/dashboard" style={dropdownLinkStyle(pathname === '/dashboard')} onClick={() => setUserMenuOpen(false)}>
                   🏠 {t('Dashboard', 'Dashboard')}
@@ -294,7 +294,7 @@ export default function Navbar() {
               {t(link.el, link.en)}
             </Link>
           ))}
-          {user && (
+          {user && nameReady && (
             <>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.5rem 0 0.25rem', marginTop: '0.5rem' }}>
                 {firstName}

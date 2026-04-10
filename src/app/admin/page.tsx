@@ -31,14 +31,27 @@ export default function AdminPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
-    async function checkAdmin() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/'); return }
-      const { data } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle()
-      if (!data) { router.push('/dashboard'); return }
-      setChecking(false)
-    }
-    checkAdmin()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        if (!session) {
+          router.push('/'); return
+        }
+        const { data } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .eq('role', 'admin')
+          .maybeSingle()
+        if (!data) {
+          router.push('/dashboard'); return
+        }
+        setChecking(false)
+      }
+      if (event === 'SIGNED_OUT') {
+        router.push('/')
+      }
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
   if (checking) return (

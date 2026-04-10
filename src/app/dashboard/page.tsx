@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const supabase = createClient()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const loadedRef = useRef(false)
 
   useEffect(() => {
     const handler = () => setDrawerOpen(true)
@@ -31,21 +32,24 @@ export default function DashboardPage() {
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-useEffect(() => {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-      if (!session) {
-        router.push('/')
-      } else {
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        if (!session) {
+          router.push('/'); return
+        }
+        // Prevent double-load on INITIAL_SESSION + SIGNED_IN firing together
+        if (event === 'INITIAL_SESSION' && loadedRef.current) return
+        loadedRef.current = true
         loadDashboard(session.user.id)
       }
-    }
-    if (event === 'SIGNED_OUT') {
-      router.push('/')
-    }
-  })
-  return () => subscription.unsubscribe()
-}, [])
+      if (event === 'SIGNED_OUT') {
+        loadedRef.current = false
+        router.push('/')
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   async function loadDashboard(userId?: string) {
     try {
@@ -89,7 +93,6 @@ useEffect(() => {
 
   return (
     <div style={{ minHeight: '90vh', padding: '2rem 1rem', maxWidth: '900px', margin: '0 auto', position: 'relative' }}>
-
       <DashboardDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -98,15 +101,8 @@ useEffect(() => {
         dogs={dogs}
         team={team}
       />
-
       <div style={{ textAlign: 'center', marginBottom: '2rem', paddingTop: '1rem' }}>
-        <h1 style={{
-          fontSize: 'clamp(1.5rem, 4vw, 2.5rem)',
-          fontFamily: 'Bebas Neue, sans-serif',
-          letterSpacing: '0.05em',
-          color: 'var(--text-primary)',
-          marginBottom: '0.25rem',
-        }}>
+        <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.5rem)', fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
           {profile?.full_name || t('Χρήστης', 'User')}
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.2rem' }}>
@@ -116,47 +112,25 @@ useEffect(() => {
           {profile?.email}
         </p>
         {profile?.show_phone && profile?.phone && (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            {profile.phone}
-          </p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{profile.phone}</p>
         )}
       </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 2fr 1fr',
-        alignItems: 'center',
-        gap: '1rem',
-        marginBottom: '2.5rem',
-      }} className="dashboard-middle">
-
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', alignItems: 'center', gap: '1rem', marginBottom: '2.5rem' }} className="dashboard-middle">
         <TeamBadge team={team} isLeader={isTeamLeader} />
-
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <RoleBadges roles={displayRoles} isTeamLeader={isTeamLeader} />
-          <ProfileCircle
-            profile={profile}
-            onUpload={() => loadDashboard()}
-          />
+          <ProfileCircle profile={profile} onUpload={() => loadDashboard()} />
         </div>
-
         <DogCircles dogs={dogs} />
       </div>
 
-      <StatsCircles
-        dogCount={dogs.length}
-        eventCount={results.length}
-        dogs={dogs}
-        results={results}
-      />
-
+      <StatsCircles dogCount={dogs.length} eventCount={results.length} dogs={dogs} results={results} />
       <EventsList results={results} profile={profile} />
 
       <style>{`
         @media (max-width: 600px) {
-          .dashboard-middle {
-            grid-template-columns: 1fr !important;
-          }
+          .dashboard-middle { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
