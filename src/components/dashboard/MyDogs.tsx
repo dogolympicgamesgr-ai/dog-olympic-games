@@ -9,22 +9,26 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [breeds, setBreeds] = useState<any[]>([])
-  const [breedsLoaded, setBreedsLoaded] = useState(false)
+  const [breedsLoading, setBreedsLoading] = useState(false)
   const [form, setForm] = useState({ name: '', breed_id: '', date_of_birth: '', gender: '', neutered: false })
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [activeDogId, setActiveDogId] = useState<string | null>(null)
 
   async function loadBreeds() {
-    if (breedsLoaded) return
-    const { data } = await supabase.from('breeds').select('id, name').order('name')
+    if (breeds.length > 0) return // already loaded, don't refetch
+    setBreedsLoading(true)
+    const { data, error } = await supabase.from('breeds').select('id, name').order('name')
+    if (error) console.error('breeds load error:', error)
     setBreeds(data || [])
-    setBreedsLoaded(true)
+    setBreedsLoading(false)
   }
 
   async function handleAddDog() {
     if (!form.name || !profile?.id) return
     setSaving(true)
+    setSaveError(null)
     const { error } = await supabase.from('dogs').insert({
       owner_id: profile.id,
       name: form.name,
@@ -34,9 +38,13 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
       neutered: form.neutered,
     })
     setSaving(false)
-    if (!error) {
+    if (error) {
+      console.error('add dog error:', error)
+      setSaveError(error.message)
+    } else {
       setForm({ name: '', breed_id: '', date_of_birth: '', gender: '', neutered: false })
       setAdding(false)
+      setSaveError(null)
       onSave()
     }
   }
@@ -45,13 +53,18 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
     const file = e.target.files?.[0]
     if (!file) return
     setUploadingFor(dogId)
-    const compressed = await compressImage(file, 400)
-    const path = `${profile.id}/${dogId}.jpg`
-    await supabase.storage.from('dogs').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
-    const { data } = supabase.storage.from('dogs').getPublicUrl(path)
-    await supabase.from('dogs').update({ photo_url: data.publicUrl + '?t=' + Date.now() }).eq('id', dogId)
+    try {
+      const compressed = await compressImage(file, 400)
+      const path = `${profile.id}/${dogId}.jpg`
+      const { error: uploadError } = await supabase.storage.from('dogs').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
+      if (uploadError) throw uploadError
+      const { data } = supabase.storage.from('dogs').getPublicUrl(path)
+      await supabase.from('dogs').update({ photo_url: data.publicUrl + '?t=' + Date.now() }).eq('id', dogId)
+      onSave()
+    } catch (err) {
+      console.error('photo upload error:', err)
+    }
     setUploadingFor(null)
-    onSave()
   }
 
   async function compressImage(file: File, maxSize: number): Promise<Blob> {
@@ -81,7 +94,6 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
 
   return (
     <div>
-      {/* Existing dogs */}
       {dogs.map(dog => (
         <div key={dog.id} style={{
           background: 'var(--bg)', border: '1px solid var(--border)',
@@ -120,7 +132,6 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
         onChange={e => activeDogId && handlePhotoUpload(e, activeDogId)} />
 
-      {/* Add dog form */}
       {!adding ? (
         <button onClick={() => { setAdding(true); loadBreeds() }} style={{
           width: '100%', background: 'var(--bg)', border: '1px dashed var(--accent)',
@@ -137,7 +148,7 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
 
           <label style={labelStyle}>{t('Φυλή', 'Breed')}</label>
           <select style={inputStyle} value={form.breed_id} onChange={e => setForm({...form, breed_id: e.target.value})}>
-            <option value="">{t('Επιλογή φυλής', 'Select breed')}</option>
+            <option value="">{breedsLoading ? t('Φόρτωση...', 'Loading...') : t('Επιλογή φυλής', 'Select breed')}</option>
             {breeds.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
 
@@ -161,8 +172,14 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
             </div>
           </div>
 
+          {saveError && (
+            <p style={{ color: '#f77e7e', fontSize: '0.82rem', marginBottom: '0.75rem' }}>
+              {t('Σφάλμα:', 'Error:')} {saveError}
+            </p>
+          )}
+
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button onClick={() => setAdding(false)} style={{
+            <button onClick={() => { setAdding(false); setSaveError(null) }} style={{
               flex: 1, background: 'transparent', border: '1px solid var(--border)',
               borderRadius: '8px', padding: '0.75rem', color: 'var(--text-secondary)',
               cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
