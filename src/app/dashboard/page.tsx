@@ -31,18 +31,21 @@ export default function DashboardPage() {
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION') {
-        if (!session) {
-          router.push('/')
-        } else {
-          loadDashboard(session.user.id)
-        }
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+      if (!session) {
+        router.push('/')
+      } else {
+        loadDashboard(session.user.id)
       }
-    })
-    return () => subscription.unsubscribe()
-  }, [])
+    }
+    if (event === 'SIGNED_OUT') {
+      router.push('/')
+    }
+  })
+  return () => subscription.unsubscribe()
+}, [])
 
   async function loadDashboard(userId?: string) {
     try {
