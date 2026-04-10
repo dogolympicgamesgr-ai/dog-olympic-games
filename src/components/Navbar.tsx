@@ -52,7 +52,22 @@ export default function Navbar() {
 
   useEffect(() => { setMobileOpen(false) }, [pathname])
 
- useEffect(() => {
+useEffect(() => {
+  async function init() {
+    try {
+      const res = await fetch('/api/auth/session')
+      const { user } = await res.json()
+      if (user) {
+        setUser(user)
+        await loadUserData(user.id)
+      }
+    } catch (err) {
+      console.error('session fetch error:', err)
+    }
+  }
+  init()
+
+  // Still listen for changes (logout, etc.)
   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
     const currentUser = session?.user ?? null
     setUser(currentUser)
