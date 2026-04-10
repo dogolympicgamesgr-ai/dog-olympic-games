@@ -23,6 +23,7 @@ export default function DashboardPage() {
     window.addEventListener('open-dashboard-drawer', handler)
     return () => window.removeEventListener('open-dashboard-drawer', handler)
   }, [])
+
   const [profile, setProfile] = useState<any>(null)
   const [roles, setRoles] = useState<string[]>([])
   const [team, setTeam] = useState<any>(null)
@@ -31,39 +32,46 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadDashboard()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        if (!session) {
+          router.push('/')
+        } else {
+          loadDashboard(session.user.id)
+        }
+      }
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
-  async function loadDashboard() {
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/'); return }
+  async function loadDashboard(userId?: string) {
+    try {
+      let uid = userId
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { router.push('/'); return }
+        uid = user.id
+      }
 
-    const [profileRes, rolesRes, teamMemberRes, dogsRes, resultsRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('user_roles').select('role').eq('user_id', user.id),
-      supabase.from('team_members').select('*, teams(*)').eq('user_id', user.id).eq('status', 'accepted').maybeSingle(),
-      supabase.from('dogs').select('*').eq('owner_id', user.id),
-      supabase.from('competition_results').select('*, events(*), dogs(name)').eq('owner_id', user.id).eq('status', 'approved').order('created_at', { ascending: false }),
-    ])
+      const [profileRes, rolesRes, teamMemberRes, dogsRes, resultsRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', uid).single(),
+        supabase.from('user_roles').select('role').eq('user_id', uid),
+        supabase.from('team_members').select('*, teams(*)').eq('user_id', uid).eq('status', 'accepted').maybeSingle(),
+        supabase.from('dogs').select('*').eq('owner_id', uid),
+        supabase.from('competition_results').select('*, events(*), dogs(name)').eq('owner_id', uid).eq('status', 'approved').order('created_at', { ascending: false }),
+      ])
 
-    console.log('profileRes:', profileRes)
-    console.log('rolesRes:', rolesRes)
-    console.log('teamMemberRes:', teamMemberRes)
-    console.log('dogsRes:', dogsRes)
-    console.log('resultsRes:', resultsRes)
-
-    setProfile(profileRes.data)
-    setRoles(rolesRes.data?.map((r: any) => r.role) || [])
-    setTeam(teamMemberRes.data?.teams || null)
-    setDogs(dogsRes.data || [])
-    setResults(resultsRes.data || [])
-    setLoading(false)
-  } catch (err) {
-    console.error('loadDashboard error:', err)
-    setLoading(false)
+      setProfile(profileRes.data)
+      setRoles(rolesRes.data?.map((r: any) => r.role) || [])
+      setTeam(teamMemberRes.data?.teams || null)
+      setDogs(dogsRes.data || [])
+      setResults(resultsRes.data || [])
+    } catch (err) {
+      console.error('loadDashboard error:', err)
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
   if (loading) return (
     <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -79,17 +87,15 @@ export default function DashboardPage() {
   return (
     <div style={{ minHeight: '90vh', padding: '2rem 1rem', maxWidth: '900px', margin: '0 auto', position: 'relative' }}>
 
-      {/* Drawer */}
       <DashboardDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        onRefresh={loadDashboard}
+        onRefresh={() => loadDashboard()}
         profile={profile}
         dogs={dogs}
         team={team}
       />
 
-      {/* Top — User Info */}
       <div style={{ textAlign: 'center', marginBottom: '2rem', paddingTop: '1rem' }}>
         <h1 style={{
           fontSize: 'clamp(1.5rem, 4vw, 2.5rem)',
@@ -113,7 +119,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Middle Section */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 2fr 1fr',
@@ -122,23 +127,19 @@ export default function DashboardPage() {
         marginBottom: '2.5rem',
       }} className="dashboard-middle">
 
-        {/* Left — Team */}
         <TeamBadge team={team} isLeader={isTeamLeader} />
 
-        {/* Center — Profile picture + role badges */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <RoleBadges roles={displayRoles} isTeamLeader={isTeamLeader} />
           <ProfileCircle
             profile={profile}
-            onUpload={loadDashboard}
+            onUpload={() => loadDashboard()}
           />
         </div>
 
-        {/* Right — Dogs */}
         <DogCircles dogs={dogs} />
       </div>
 
-      {/* Stats Row */}
       <StatsCircles
         dogCount={dogs.length}
         eventCount={results.length}
@@ -146,7 +147,6 @@ export default function DashboardPage() {
         results={results}
       />
 
-      {/* Events List */}
       <EventsList results={results} profile={profile} />
 
       <style>{`
