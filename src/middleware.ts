@@ -23,10 +23,13 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Protect /admin — must be logged in AND have admin role
   if (request.nextUrl.pathname.startsWith('/admin')) {
     if (!user) {
-      return NextResponse.redirect(new URL('/', request.url))
+      const redirectResponse = NextResponse.redirect(new URL('/', request.url))
+      supabaseResponse.cookies.getAll().forEach(cookie => {
+        redirectResponse.cookies.set(cookie.name, cookie.value)
+      })
+      return redirectResponse
     }
     const { data: adminRole } = await supabase
       .from('user_roles')
@@ -34,16 +37,22 @@ export async function middleware(request: NextRequest) {
       .eq('user_id', user.id)
       .eq('role', 'admin')
       .maybeSingle()
-
     if (!adminRole) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      const redirectResponse = NextResponse.redirect(new URL('/dashboard', request.url))
+      supabaseResponse.cookies.getAll().forEach(cookie => {
+        redirectResponse.cookies.set(cookie.name, cookie.value)
+      })
+      return redirectResponse
     }
   }
 
-  // Protect /dashboard — must be logged in
   if (request.nextUrl.pathname.startsWith('/dashboard')) {
     if (!user) {
-      return NextResponse.redirect(new URL('/', request.url))
+      const redirectResponse = NextResponse.redirect(new URL('/', request.url))
+      supabaseResponse.cookies.getAll().forEach(cookie => {
+        redirectResponse.cookies.set(cookie.name, cookie.value)
+      })
+      return redirectResponse
     }
   }
 

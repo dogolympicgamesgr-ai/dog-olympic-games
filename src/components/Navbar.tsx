@@ -52,29 +52,28 @@ export default function Navbar() {
 
   useEffect(() => { setMobileOpen(false) }, [pathname])
 
-  useEffect(() => {
-    // Use onAuthStateChange only — no getUser() race condition
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      if (currentUser) {
-        await loadUserData(currentUser.id)
-      } else {
-        setProfileName('')
-        setIsAdmin(false)
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [])
+ useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const currentUser = session?.user ?? null
+    setUser(currentUser)
+    if (currentUser) {
+      await loadUserData(currentUser.id)
+    } else {
+      setProfileName('')
+      setIsAdmin(false)
+    }
+  })
+  return () => subscription.unsubscribe()
+}, [])
 
-  async function loadUserData(userId: string) {
-    const [profileRes, adminRes] = await Promise.all([
-      supabase.from('profiles').select('full_name').eq('id', userId).single(),
-      supabase.from('user_roles').select('role').eq('user_id', userId).eq('role', 'admin').maybeSingle(),
-    ])
-    setProfileName(profileRes.data?.full_name || '')
-    setIsAdmin(!!adminRes.data)
-  }
+async function loadUserData(userId: string) {
+  const [profileRes, adminRes] = await Promise.all([
+    supabase.from('profiles').select('full_name').eq('id', userId).single(),
+    supabase.from('user_roles').select('role').eq('user_id', userId).eq('role', 'admin').maybeSingle(),
+  ])
+  setProfileName(profileRes.data?.full_name || '')
+  setIsAdmin(!!adminRes.data)
+}
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({

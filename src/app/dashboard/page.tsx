@@ -32,24 +32,22 @@ export default function DashboardPage() {
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-        if (!session) {
-          router.push('/'); return
-        }
-        // Prevent double-load on INITIAL_SESSION + SIGNED_IN firing together
-        if (event === 'INITIAL_SESSION' && loadedRef.current) return
-        loadedRef.current = true
-        loadDashboard(session.user.id)
-      }
-      if (event === 'SIGNED_OUT') {
-        loadedRef.current = false
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+      if (!session) {
+        setLoading(false)
         router.push('/')
+        return
       }
-    })
-    return () => subscription.unsubscribe()
-  }, [])
+      loadDashboard(session.user.id)
+    }
+    if (event === 'SIGNED_OUT') {
+      router.push('/')
+    }
+  })
+  return () => subscription.unsubscribe()
+}, [])
 
   async function loadDashboard(userId?: string) {
     try {

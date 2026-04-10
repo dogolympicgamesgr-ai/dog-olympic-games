@@ -30,29 +30,29 @@ export default function AdminPage() {
   const [active, setActive] = useState<Section>('users')
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-        if (!session) {
-          router.push('/'); return
-        }
-        const { data } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .eq('role', 'admin')
-          .maybeSingle()
-        if (!data) {
-          router.push('/dashboard'); return
-        }
-        setChecking(false)
+ useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+      if (!session) {
+        router.push('/'); return
       }
-      if (event === 'SIGNED_OUT') {
-        router.push('/')
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .eq('role', 'admin')
+        .maybeSingle()
+      if (!data) {
+        router.push('/dashboard'); return
       }
-    })
-    return () => subscription.unsubscribe()
-  }, [])
+      setChecking(false)
+    }
+    if (event === 'SIGNED_OUT') {
+      router.push('/')
+    }
+  })
+  return () => subscription.unsubscribe()
+}, [])
 
   if (checking) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
