@@ -48,7 +48,7 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
     // Get accepted members
     const { data: memberRows } = await supabase
       .from('team_members')
-      .select('user_id, profiles(id, full_name, avatar_url, member_id)')
+      .select('id, user_id, profiles!team_members_user_id_fkey(id, full_name, avatar_url, member_id)')
       .eq('team_id', teamId)
       .eq('status', 'accepted')
 
