@@ -3,12 +3,13 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 import { useRouter } from 'next/navigation'
+import { use } from 'react'
 
-export default function TeamProfilePage({ params }: { params: { id: string } }) {
+export default function TeamProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { t } = useLang()
   const router = useRouter()
   const supabase = createClient()
-  const teamId = params.id
+  const { id: teamId } = use(params)
 
   const [team, setTeam] = useState<any>(null)
   const [captain, setCaptain] = useState<any>(null)
@@ -32,8 +33,8 @@ export default function TeamProfilePage({ params }: { params: { id: string } }) 
   const result = await supabase
     .from('teams').select('*').eq('id', teamId).single()
 
-  console.log('teamData:', result.data)
-  console.log('teamError:', result.error)
+ // console.log('teamData:', result.data)
+  //console.log('teamError:', result.error)
 
   if (!result.data) { setLoading(false); return }
   const teamData = result.data
