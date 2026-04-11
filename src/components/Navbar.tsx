@@ -28,32 +28,34 @@ export default function Navbar() {
   const [profileName, setProfileName] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [roles, setRoles] = useState<string[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [communityOpen, setCommunityOpen] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [myProfileOpen, setMyProfileOpen] = useState(false)
   const pathname = usePathname()
   const supabase = createClient()
 
   const aboutRef = useRef<HTMLDivElement>(null)
   const communityRef = useRef<HTMLDivElement>(null)
-  const userRef = useRef<HTMLDivElement>(null)
 
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (aboutRef.current && !aboutRef.current.contains(e.target as Node)) setAboutOpen(false)
       if (communityRef.current && !communityRef.current.contains(e.target as Node)) setCommunityOpen(false)
-      if (userRef.current && !userRef.current.contains(e.target as Node)) setUserMenuOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Close drawer on route change
-  useEffect(() => { setDrawerOpen(false) }, [pathname])
+  // Close drawer + refresh unread on route change
+  useEffect(() => {
+    setDrawerOpen(false)
+    if (user) fetchUnreadCount(user.id)
+  }, [pathname])
 
-  // Session fetch
+  // Session + auth state
   useEffect(() => {
     async function init() {
       try {
@@ -64,6 +66,7 @@ export default function Navbar() {
           setProfileName(data.profile?.full_name || '')
           setIsAdmin(data.isAdmin)
           setRoles(data.roles || [])
+          fetchUnreadCount(data.user.id)
         }
       } catch (err) {
         console.error('session fetch error:', err)
@@ -77,6 +80,7 @@ export default function Navbar() {
         setProfileName('')
         setIsAdmin(false)
         setRoles([])
+        setUnreadCount(0)
       } else {
         try {
           const res = await fetch('/auth/session')
@@ -85,18 +89,28 @@ export default function Navbar() {
           setProfileName(data.profile?.full_name || '')
           setIsAdmin(data.isAdmin)
           setRoles(data.roles || [])
+          fetchUnreadCount(data.user.id)
         } catch {}
       }
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  // Dashboard drawer event (keep compatibility)
+  // Dashboard drawer compat
   useEffect(() => {
     function onDashboardDrawer() { setDrawerOpen(true) }
     window.addEventListener('open-dashboard-drawer', onDashboardDrawer)
     return () => window.removeEventListener('open-dashboard-drawer', onDashboardDrawer)
   }, [])
+
+  async function fetchUnreadCount(userId: string) {
+    const { count } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('read', false)
+    setUnreadCount(count || 0)
+  }
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
@@ -106,7 +120,6 @@ export default function Navbar() {
   }
 
   const handleLogout = async () => {
-    setUserMenuOpen(false)
     setDrawerOpen(false)
     await supabase.auth.signOut()
     window.location.href = '/'
@@ -162,11 +175,11 @@ export default function Navbar() {
     display: 'flex',
     alignItems: 'center',
     gap: '0.75rem',
-    padding: '0.85rem 1rem',
+    padding: '0.75rem 1rem',
     borderRadius: '10px',
     color: active ? 'var(--accent)' : 'var(--text-primary)',
     textDecoration: 'none',
-    fontSize: '0.95rem',
+    fontSize: '0.9rem',
     fontWeight: active ? 600 : 400,
     background: active ? 'var(--bg)' : 'transparent',
     transition: 'background 0.15s',
@@ -177,17 +190,16 @@ export default function Navbar() {
     textAlign: 'left' as const,
   })
 
-  const drawerSectionLabel = (label: string) => (
+  const sectionLabel = (label: string) => (
     <p style={{
-      color: 'var(--text-secondary)', fontSize: '0.7rem',
+      color: 'var(--text-secondary)', fontSize: '0.68rem',
       fontWeight: 700, letterSpacing: '0.1em',
-      textTransform: 'uppercase', padding: '1rem 1rem 0.4rem',
+      textTransform: 'uppercase', padding: '1rem 1rem 0.3rem',
     }}>{label}</p>
   )
 
   const aboutActive = aboutLinks.some(l => pathname === l.href)
   const communityActive = communityLinks.some(l => pathname === l.href)
-  const showHamburger = !!user // logged in: always | not logged in: mobile only via CSS
 
   return (
     <>
@@ -208,7 +220,7 @@ export default function Navbar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
           <button
             onClick={() => setDrawerOpen(true)}
-            className={showHamburger ? 'hamburger-always' : 'hamburger-mobile'}
+            className={user ? 'hamburger-always' : 'hamburger-mobile'}
             style={{
               background: 'none', border: 'none',
               color: 'var(--text-primary)', cursor: 'pointer',
@@ -220,7 +232,7 @@ export default function Navbar() {
             letterSpacing: '0.06em', color: 'var(--accent)',
             textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.4rem',
           }}>
-            <span style={{ fontSize: '1.4rem' }}>🐾</span>
+            <span>🐾</span>
             <span className="logo-text">DOG OLYMPIC GAMES</span>
           </Link>
         </div>
@@ -228,7 +240,7 @@ export default function Navbar() {
         {/* CENTER — desktop nav */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }} className="desktop-nav">
           <div ref={aboutRef} style={{ position: 'relative' }}>
-            <button style={navBtnStyle(aboutActive)} onClick={() => { setAboutOpen(!aboutOpen); setCommunityOpen(false); setUserMenuOpen(false) }}>
+            <button style={navBtnStyle(aboutActive)} onClick={() => { setAboutOpen(!aboutOpen); setCommunityOpen(false) }}>
               {t('Σχετικά', 'About')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
             </button>
             {aboutOpen && (
@@ -243,7 +255,7 @@ export default function Navbar() {
           </div>
 
           <div ref={communityRef} style={{ position: 'relative' }}>
-            <button style={navBtnStyle(communityActive)} onClick={() => { setCommunityOpen(!communityOpen); setAboutOpen(false); setUserMenuOpen(false) }}>
+            <button style={navBtnStyle(communityActive)} onClick={() => { setCommunityOpen(!communityOpen); setAboutOpen(false) }}>
               {t('Κοινότητα', 'Community')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
             </button>
             {communityOpen && (
@@ -258,7 +270,7 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* RIGHT — lang + user */}
+        {/* RIGHT — lang + bell + login */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
           <button onClick={() => setLang(lang === 'el' ? 'en' : 'el')} style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
@@ -270,41 +282,27 @@ export default function Navbar() {
           </button>
 
           {user ? (
-            <div ref={userRef} style={{ position: 'relative' }}>
-              <button
-                onClick={() => { setUserMenuOpen(!userMenuOpen); setAboutOpen(false); setCommunityOpen(false) }}
-                style={{
-                  background: 'var(--accent)', border: 'none', borderRadius: '6px',
-                  padding: '0.4rem 0.85rem', color: 'var(--bg)', fontSize: '0.85rem',
-                  fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
-                  display: 'flex', alignItems: 'center', gap: '0.3rem',
-                }}
-              >
-                {firstName || t('Προφίλ', 'Profile')}
-                <span style={{ fontSize: '0.65rem' }}>▼</span>
-              </button>
-              {userMenuOpen && (
-                <div style={{ ...dropdownStyle, left: 'auto', right: 0, transform: 'none', minWidth: '160px' }}>
-                  <Link href="/dashboard" style={dropdownLinkStyle(pathname === '/dashboard')} onClick={() => setUserMenuOpen(false)}>
-                    🏠 {t('Dashboard', 'Dashboard')}
-                  </Link>
-                  {isAdmin && (
-                    <Link href="/admin" style={dropdownLinkStyle(pathname === '/admin')} onClick={() => setUserMenuOpen(false)}>
-                      ⚙️ Admin Panel
-                    </Link>
-                  )}
-                  <button onClick={handleLogout} style={{
-                    width: '100%', background: 'none', border: 'none',
-                    padding: '0.6rem 1rem', borderRadius: '6px',
-                    color: '#f77e7e', fontSize: '0.88rem', cursor: 'pointer',
-                    textAlign: 'left', fontFamily: 'Outfit, sans-serif',
-                    marginTop: '0.25rem', borderTop: '1px solid var(--border)',
-                  }}>
-                    🚪 {t('Αποσύνδεση', 'Logout')}
-                  </button>
-                </div>
+            <Link href="/notifications" style={{
+              position: 'relative', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: '6px', padding: '0.3rem 0.6rem',
+              color: 'var(--text-secondary)', textDecoration: 'none',
+              fontSize: '1rem',
+            }}>
+              🔔
+              {unreadCount > 0 && (
+                <span style={{
+                  position: 'absolute', top: '-6px', right: '-6px',
+                  background: 'var(--accent)', color: 'var(--bg)',
+                  borderRadius: '50%', width: '18px', height: '18px',
+                  fontSize: '0.65rem', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
               )}
-            </div>
+            </Link>
           ) : (
             <button onClick={handleLogin} style={{
               background: 'var(--accent)', border: 'none', borderRadius: '6px',
@@ -337,8 +335,9 @@ export default function Navbar() {
               padding: '1.25rem 1.5rem',
               borderBottom: '1px solid var(--border)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              flexShrink: 0,
             }}>
-              <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.2rem', color: 'var(--accent)', letterSpacing: '0.05em' }}>
+              <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.1rem', color: 'var(--accent)', letterSpacing: '0.05em' }}>
                 🐾 DOG OLYMPIC GAMES
               </span>
               <button onClick={() => setDrawerOpen(false)} style={{
@@ -347,11 +346,11 @@ export default function Navbar() {
               }}>✕</button>
             </div>
 
-            {/* Drawer content */}
-            <div style={{ flex: 1, padding: '0.5rem' }}>
+            {/* Drawer body */}
+            <div style={{ flex: 1, padding: '0.5rem 0.75rem', overflowY: 'auto' }}>
 
               {/* About */}
-              {drawerSectionLabel(t('Σχετικά', 'About'))}
+              {sectionLabel(t('Σχετικά', 'About'))}
               {aboutLinks.map(link => (
                 <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
                   {t(link.el, link.en)}
@@ -359,19 +358,37 @@ export default function Navbar() {
               ))}
 
               {/* Community */}
-              {drawerSectionLabel(t('Κοινότητα', 'Community'))}
+              {sectionLabel(t('Κοινότητα', 'Community'))}
               {communityLinks.map(link => (
                 <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
                   {t(link.el, link.en)}
                 </Link>
               ))}
 
-              {/* User section */}
+              {/* Account — logged in only */}
               {user && (
                 <>
-                  {drawerSectionLabel(firstName || t('Λογαριασμός', 'Account'))}
+                  {sectionLabel(firstName || t('Λογαριασμός', 'Account'))}
+
                   <Link href="/dashboard" style={drawerLinkStyle(pathname === '/dashboard')}>
                     🏠 {t('Dashboard', 'Dashboard')}
+                  </Link>
+
+                  <Link href="/notifications" style={drawerLinkStyle(pathname === '/notifications')} onClick={() => setUnreadCount(0)}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                      🔔 {t('Ειδοποιήσεις', 'Notifications')}
+                    </span>
+                    {unreadCount > 0 && (
+                      <span style={{
+                        background: 'var(--accent)', color: 'var(--bg)',
+                        borderRadius: '50%', width: '20px', height: '20px',
+                        fontSize: '0.7rem', fontWeight: 700,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
                   </Link>
 
                   {/* Admin */}
@@ -383,25 +400,55 @@ export default function Navbar() {
 
                   {/* Role placeholders */}
                   {roles.includes('judge') && (
-                    <button style={drawerLinkStyle(false)} disabled>
-                      ⚖️ {t('Πίνακας Κριτή', 'Judge Panel')} <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>coming soon</span>
+                    <button style={{ ...drawerLinkStyle(false), opacity: 0.5, cursor: 'not-allowed' }} disabled>
+                      ⚖️ {t('Πίνακας Κριτή', 'Judge Panel')}
+                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>soon</span>
                     </button>
                   )}
                   {roles.includes('organizer') && (
-                    <button style={drawerLinkStyle(false)} disabled>
-                      📋 {t('Πίνακας Διοργανωτή', 'Organizer Panel')} <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>coming soon</span>
+                    <button style={{ ...drawerLinkStyle(false), opacity: 0.5, cursor: 'not-allowed' }} disabled>
+                      📋 {t('Πίνακας Διοργανωτή', 'Organizer Panel')}
+                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>soon</span>
                     </button>
                   )}
                   {roles.includes('decoy') && (
-                    <button style={drawerLinkStyle(false)} disabled>
-                      🎯 {t('Πίνακας Decoy', 'Decoy Panel')} <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>coming soon</span>
+                    <button style={{ ...drawerLinkStyle(false), opacity: 0.5, cursor: 'not-allowed' }} disabled>
+                      🎯 {t('Πίνακας Decoy', 'Decoy Panel')}
+                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>soon</span>
                     </button>
                   )}
 
-                  {/* Logout */}
-                  <button onClick={handleLogout} style={{ ...drawerLinkStyle(false), color: '#f77e7e', marginTop: '0.5rem', borderTop: '1px solid var(--border)', borderRadius: 0 }}>
-                    🚪 {t('Αποσύνδεση', 'Logout')}
+                  {/* My Profile collapsible */}
+                  <button
+                    onClick={() => setMyProfileOpen(!myProfileOpen)}
+                    style={{ ...drawerLinkStyle(false), justifyContent: 'space-between' }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      👤 {t('Το Προφίλ μου', 'My Profile')}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>{myProfileOpen ? '▲' : '▼'}</span>
                   </button>
+
+                  {myProfileOpen && (
+                    <div style={{ paddingLeft: '1rem', borderLeft: '2px solid var(--border)', marginLeft: '1rem', marginBottom: '0.25rem' }}>
+                      <Link href="/profile/edit" style={drawerLinkStyle(pathname === '/profile/edit')}>
+                        ✏️ {t('Επεξεργασία Προφίλ', 'Edit Profile')}
+                      </Link>
+                      <Link href="/profile/dogs" style={drawerLinkStyle(pathname === '/profile/dogs')}>
+                        🐕 {t('Οι Σκύλοι μου', 'My Dogs')}
+                      </Link>
+                      <Link href="/profile/team" style={drawerLinkStyle(pathname === '/profile/team')}>
+                        👥 {t('Η Ομάδα μου', 'My Team')}
+                      </Link>
+                    </div>
+                  )}
+
+                  {/* Logout */}
+                  <div style={{ borderTop: '1px solid var(--border)', marginTop: '0.5rem', paddingTop: '0.5rem' }}>
+                    <button onClick={handleLogout} style={{ ...drawerLinkStyle(false), color: '#f77e7e' }}>
+                      🚪 {t('Αποσύνδεση', 'Logout')}
+                    </button>
+                  </div>
                 </>
               )}
             </div>
