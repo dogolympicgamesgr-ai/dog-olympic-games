@@ -78,7 +78,7 @@ export default function MyTeamPage() {
   async function loadTeamData(teamId: string, userId: string, captainId: string) {
     const { data: mems } = await supabase
       .from('team_members')
-      .select('id, user_id, profiles(id, full_name, avatar_url, member_id)')
+      .select('user_id, profiles!team_members_user_id_fkey(id, full_name, avatar_url, member_id)')
       .eq('team_id', teamId)
       .eq('status', 'accepted')
     setMembers(mems || [])
@@ -86,7 +86,7 @@ export default function MyTeamPage() {
     if (userId === captainId) {
       const { data: pending } = await supabase
         .from('team_members')
-        .select('id, user_id, profiles(id, full_name, avatar_url, member_id)')
+        .select('user_id, profiles!team_members_user_id_fkey(id, full_name, avatar_url, member_id)')
         .eq('team_id', teamId)
         .eq('status', 'pending')
       setPendingRequests(pending || [])
