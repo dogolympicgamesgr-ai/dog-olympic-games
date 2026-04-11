@@ -98,10 +98,6 @@ useEffect(() => {
       <DashboardDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        onRefresh={() => loadDashboard()}
-        profile={profile}
-        dogs={dogs}
-        team={team}
       />
       <div style={{ textAlign: 'center', marginBottom: '2rem', paddingTop: '1rem' }}>
         <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.5rem)', fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
