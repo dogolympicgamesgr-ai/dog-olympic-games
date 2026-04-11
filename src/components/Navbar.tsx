@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 import type { User } from '@supabase/supabase-js'
@@ -25,21 +25,21 @@ const communityLinks = [
 export default function Navbar() {
   const { lang, setLang, t } = useLang()
   const [user, setUser] = useState<User | null>(null)
-  const [profileName, setProfileName] = useState<string>('')
+  const [profileName, setProfileName] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [roles, setRoles] = useState<string[]>([])
   const [aboutOpen, setAboutOpen] = useState(false)
   const [communityOpen, setCommunityOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const pathname = usePathname()
-  const router = useRouter()
   const supabase = createClient()
-  const isDashboard = pathname === '/dashboard'
 
   const aboutRef = useRef<HTMLDivElement>(null)
   const communityRef = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
 
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (aboutRef.current && !aboutRef.current.contains(e.target as Node)) setAboutOpen(false)
@@ -50,51 +50,53 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  useEffect(() => { setMobileOpen(false) }, [pathname])
+  // Close drawer on route change
+  useEffect(() => { setDrawerOpen(false) }, [pathname])
 
-useEffect(() => {
-  async function init() {
-    try {
-      const res = await fetch('/auth/session')
-      const { user, profile, isAdmin } = await res.json()
-      if (user) {
-        setUser(user)
-        setProfileName(profile?.full_name || '')
-        setIsAdmin(isAdmin)
-      }
-    } catch (err) {
-      console.error('session fetch error:', err)
-    }
-  }
-  init()
-
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-    const currentUser = session?.user ?? null
-    setUser(currentUser)
-    if (!currentUser) {
-      setProfileName('')
-      setIsAdmin(false)
-    } else {
-      // Re-fetch from server on auth change
+  // Session fetch
+  useEffect(() => {
+    async function init() {
       try {
         const res = await fetch('/auth/session')
-        const { profile, isAdmin } = await res.json()
-        setProfileName(profile?.full_name || '')
-        setIsAdmin(isAdmin)
-      } catch {}
+        const data = await res.json()
+        if (data.user) {
+          setUser(data.user)
+          setProfileName(data.profile?.full_name || '')
+          setIsAdmin(data.isAdmin)
+          setRoles(data.roles || [])
+        }
+      } catch (err) {
+        console.error('session fetch error:', err)
+      }
     }
-  })
-  return () => subscription.unsubscribe()
-}, [])
+    init()
 
-async function loadUserData(userId: string) {
-  const [profileRes, adminRes] = await Promise.all([
-    supabase.from('profiles').select('full_name').eq('id', userId).single(),
-    supabase.from('user_roles').select('role').eq('user_id', userId).eq('role', 'admin').maybeSingle(),
-  ])
-  setProfileName(profileRes.data?.full_name || '')
-  setIsAdmin(!!adminRes.data)
-}
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session?.user) {
+        setUser(null)
+        setProfileName('')
+        setIsAdmin(false)
+        setRoles([])
+      } else {
+        try {
+          const res = await fetch('/auth/session')
+          const data = await res.json()
+          setUser(data.user)
+          setProfileName(data.profile?.full_name || '')
+          setIsAdmin(data.isAdmin)
+          setRoles(data.roles || [])
+        } catch {}
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Dashboard drawer event (keep compatibility)
+  useEffect(() => {
+    function onDashboardDrawer() { setDrawerOpen(true) }
+    window.addEventListener('open-dashboard-drawer', onDashboardDrawer)
+    return () => window.removeEventListener('open-dashboard-drawer', onDashboardDrawer)
+  }, [])
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
@@ -104,11 +106,11 @@ async function loadUserData(userId: string) {
   }
 
   const handleLogout = async () => {
-  setUserMenuOpen(false)
-  setMobileOpen(false)
-  await supabase.auth.signOut()
-  window.location.href = '/'
-}
+    setUserMenuOpen(false)
+    setDrawerOpen(false)
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
 
   const displayName = profileName || user?.email?.split('@')[0] || ''
   const firstName = displayName.split(' ')[0]
@@ -156,191 +158,266 @@ async function loadUserData(userId: string) {
     letterSpacing: '0.02em',
   })
 
+  const drawerLinkStyle = (active: boolean) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    padding: '0.85rem 1rem',
+    borderRadius: '10px',
+    color: active ? 'var(--accent)' : 'var(--text-primary)',
+    textDecoration: 'none',
+    fontSize: '0.95rem',
+    fontWeight: active ? 600 : 400,
+    background: active ? 'var(--bg)' : 'transparent',
+    transition: 'background 0.15s',
+    border: 'none',
+    cursor: 'pointer',
+    fontFamily: 'Outfit, sans-serif',
+    width: '100%',
+    textAlign: 'left' as const,
+  })
+
+  const drawerSectionLabel = (label: string) => (
+    <p style={{
+      color: 'var(--text-secondary)', fontSize: '0.7rem',
+      fontWeight: 700, letterSpacing: '0.1em',
+      textTransform: 'uppercase', padding: '1rem 1rem 0.4rem',
+    }}>{label}</p>
+  )
+
   const aboutActive = aboutLinks.some(l => pathname === l.href)
   const communityActive = communityLinks.some(l => pathname === l.href)
+  const showHamburger = !!user // logged in: always | not logged in: mobile only via CSS
 
   return (
-    <nav style={{
-      position: 'fixed', top: 0, left: 0, right: 0,
-      height: 'var(--nav-height)',
-      background: 'rgba(10,15,30,0.95)',
-      backdropFilter: 'blur(12px)',
-      borderBottom: '1px solid var(--border)',
-      zIndex: 1000,
-      display: 'flex', alignItems: 'center',
-      padding: '0 1.5rem',
-      justifyContent: 'space-between',
-      gap: '1rem',
-    }}>
+    <>
+      <nav style={{
+        position: 'fixed', top: 0, left: 0, right: 0,
+        height: 'var(--nav-height)',
+        background: 'rgba(10,15,30,0.95)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border)',
+        zIndex: 1000,
+        display: 'flex', alignItems: 'center',
+        padding: '0 1.5rem',
+        justifyContent: 'space-between',
+        gap: '1rem',
+      }}>
 
-      {/* LEFT */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-        {isDashboard && user && (
+        {/* LEFT — hamburger + logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
           <button
-            onClick={() => window.dispatchEvent(new Event('open-dashboard-drawer'))}
-            style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1.2rem', padding: '0.3rem', borderRadius: '6px' }}
+            onClick={() => setDrawerOpen(true)}
+            className={showHamburger ? 'hamburger-always' : 'hamburger-mobile'}
+            style={{
+              background: 'none', border: 'none',
+              color: 'var(--text-primary)', cursor: 'pointer',
+              fontSize: '1.2rem', padding: '0.3rem', borderRadius: '6px',
+            }}
           >☰</button>
-        )}
-        <Link href="/" style={{
-          fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.4rem',
-          letterSpacing: '0.06em', color: 'var(--accent)',
-          textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.4rem',
-        }}>
-          <span style={{ fontSize: '1.4rem' }}>🐾</span>
-          <span className="logo-text">DOG OLYMPIC GAMES</span>
-        </Link>
-      </div>
-
-      {/* CENTER */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }} className="desktop-nav">
-        <div ref={aboutRef} style={{ position: 'relative' }}>
-          <button style={navBtnStyle(aboutActive)} onClick={() => { setAboutOpen(!aboutOpen); setCommunityOpen(false); setUserMenuOpen(false) }}>
-            {t('Σχετικά', 'About')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
-          </button>
-          {aboutOpen && (
-            <div style={dropdownStyle}>
-              {aboutLinks.map(link => (
-                <Link key={link.href} href={link.href} style={dropdownLinkStyle(pathname === link.href)} onClick={() => setAboutOpen(false)}>
-                  {t(link.el, link.en)}
-                </Link>
-              ))}
-            </div>
-          )}
+          <Link href="/" style={{
+            fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.4rem',
+            letterSpacing: '0.06em', color: 'var(--accent)',
+            textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.4rem',
+          }}>
+            <span style={{ fontSize: '1.4rem' }}>🐾</span>
+            <span className="logo-text">DOG OLYMPIC GAMES</span>
+          </Link>
         </div>
 
-        <div ref={communityRef} style={{ position: 'relative' }}>
-          <button style={navBtnStyle(communityActive)} onClick={() => { setCommunityOpen(!communityOpen); setAboutOpen(false); setUserMenuOpen(false) }}>
-            {t('Κοινότητα', 'Community')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
-          </button>
-          {communityOpen && (
-            <div style={dropdownStyle}>
-              {communityLinks.map(link => (
-                <Link key={link.href} href={link.href} style={dropdownLinkStyle(pathname === link.href)} onClick={() => setCommunityOpen(false)}>
-                  {t(link.el, link.en)}
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* RIGHT */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-        <button onClick={() => setLang(lang === 'el' ? 'en' : 'el')} style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: '6px', padding: '0.3rem 0.6rem',
-          color: 'var(--text-secondary)', fontSize: '0.75rem',
-          fontWeight: 600, cursor: 'pointer', letterSpacing: '0.05em',
-        }}>
-          {lang === 'el' ? 'EN' : 'ΕΛ'}
-        </button>
-
-        {user ? (
-          <div ref={userRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => { setUserMenuOpen(!userMenuOpen); setAboutOpen(false); setCommunityOpen(false) }}
-              style={{
-                background: 'var(--accent)', border: 'none', borderRadius: '6px',
-                padding: '0.4rem 0.85rem', color: 'var(--bg)', fontSize: '0.85rem',
-                fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
-                display: 'flex', alignItems: 'center', gap: '0.3rem',
-              }}
-            >
-              {firstName || t('Προφίλ', 'Profile')}
-              <span style={{ fontSize: '0.65rem' }}>▼</span>
+        {/* CENTER — desktop nav */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }} className="desktop-nav">
+          <div ref={aboutRef} style={{ position: 'relative' }}>
+            <button style={navBtnStyle(aboutActive)} onClick={() => { setAboutOpen(!aboutOpen); setCommunityOpen(false); setUserMenuOpen(false) }}>
+              {t('Σχετικά', 'About')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
             </button>
-            {userMenuOpen && (
-              <div style={{ ...dropdownStyle, left: 'auto', right: 0, transform: 'none', minWidth: '160px' }}>
-                <Link href="/dashboard" style={dropdownLinkStyle(pathname === '/dashboard')} onClick={() => setUserMenuOpen(false)}>
-                  🏠 {t('Dashboard', 'Dashboard')}
-                </Link>
-                {isAdmin && (
-                  <Link href="/admin" style={dropdownLinkStyle(pathname === '/admin')} onClick={() => setUserMenuOpen(false)}>
-                    ⚙️ Admin Panel
+            {aboutOpen && (
+              <div style={dropdownStyle}>
+                {aboutLinks.map(link => (
+                  <Link key={link.href} href={link.href} style={dropdownLinkStyle(pathname === link.href)} onClick={() => setAboutOpen(false)}>
+                    {t(link.el, link.en)}
                   </Link>
-                )}
-                <button onClick={handleLogout} style={{
-                  width: '100%', background: 'none', border: 'none',
-                  padding: '0.6rem 1rem', borderRadius: '6px',
-                  color: '#f77e7e', fontSize: '0.88rem', cursor: 'pointer',
-                  textAlign: 'left', fontFamily: 'Outfit, sans-serif',
-                  marginTop: '0.25rem', borderTop: '1px solid var(--border)',
-                }}>
-                  🚪 {t('Αποσύνδεση', 'Logout')}
-                </button>
+                ))}
               </div>
             )}
           </div>
-        ) : (
-          <button onClick={handleLogin} style={{
-            background: 'var(--accent)', border: 'none', borderRadius: '6px',
-            padding: '0.4rem 1rem', color: 'var(--bg)', fontSize: '0.85rem',
-            fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
+
+          <div ref={communityRef} style={{ position: 'relative' }}>
+            <button style={navBtnStyle(communityActive)} onClick={() => { setCommunityOpen(!communityOpen); setAboutOpen(false); setUserMenuOpen(false) }}>
+              {t('Κοινότητα', 'Community')} <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>▼</span>
+            </button>
+            {communityOpen && (
+              <div style={dropdownStyle}>
+                {communityLinks.map(link => (
+                  <Link key={link.href} href={link.href} style={dropdownLinkStyle(pathname === link.href)} onClick={() => setCommunityOpen(false)}>
+                    {t(link.el, link.en)}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT — lang + user */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+          <button onClick={() => setLang(lang === 'el' ? 'en' : 'el')} style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '0.3rem 0.6rem',
+            color: 'var(--text-secondary)', fontSize: '0.75rem',
+            fontWeight: 600, cursor: 'pointer', letterSpacing: '0.05em',
           }}>
-            {t('Σύνδεση', 'Login')}
+            {lang === 'el' ? 'EN' : 'ΕΛ'}
           </button>
-        )}
 
-        <button onClick={() => setMobileOpen(!mobileOpen)} className="hamburger" style={{
-          background: 'none', border: 'none', color: 'var(--text-primary)',
-          cursor: 'pointer', fontSize: '1.3rem', display: 'none', padding: '0.2rem',
-        }}>
-          {mobileOpen ? '✕' : '☰'}
-        </button>
-      </div>
-
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div style={{
-          position: 'absolute', top: 'var(--nav-height)', left: 0, right: 0,
-          background: 'var(--bg-card)', borderBottom: '1px solid var(--border)',
-          padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem',
-          maxHeight: '80vh', overflowY: 'auto',
-        }}>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.25rem 0', marginBottom: '0.25rem' }}>
-            {t('Σχετικά', 'About')}
-          </p>
-          {aboutLinks.map(link => (
-            <Link key={link.href} href={link.href} style={{ padding: '0.6rem 0', color: pathname === link.href ? 'var(--accent)' : 'var(--text-primary)', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }}>
-              {t(link.el, link.en)}
-            </Link>
-          ))}
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.5rem 0 0.25rem', marginTop: '0.5rem' }}>
-            {t('Κοινότητα', 'Community')}
-          </p>
-          {communityLinks.map(link => (
-            <Link key={link.href} href={link.href} style={{ padding: '0.6rem 0', color: pathname === link.href ? 'var(--accent)' : 'var(--text-primary)', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }}>
-              {t(link.el, link.en)}
-            </Link>
-          ))}
-          {user && (
-            <>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.5rem 0 0.25rem', marginTop: '0.5rem' }}>
-                {firstName}
-              </p>
-              <Link href="/dashboard" style={{ padding: '0.6rem 0', color: 'var(--text-primary)', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }} onClick={() => setMobileOpen(false)}>
-                🏠 Dashboard
-              </Link>
-              {isAdmin && (
-                <Link href="/admin" style={{ padding: '0.6rem 0', color: 'var(--accent)', textDecoration: 'none', fontSize: '0.95rem', borderBottom: '1px solid var(--border)' }} onClick={() => setMobileOpen(false)}>
-                  ⚙️ Admin Panel
-                </Link>
-              )}
-              <button onClick={handleLogout} style={{ padding: '0.6rem 0', color: '#f77e7e', background: 'none', border: 'none', textAlign: 'left', fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
-                🚪 {t('Αποσύνδεση', 'Logout')}
+          {user ? (
+            <div ref={userRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => { setUserMenuOpen(!userMenuOpen); setAboutOpen(false); setCommunityOpen(false) }}
+                style={{
+                  background: 'var(--accent)', border: 'none', borderRadius: '6px',
+                  padding: '0.4rem 0.85rem', color: 'var(--bg)', fontSize: '0.85rem',
+                  fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
+                  display: 'flex', alignItems: 'center', gap: '0.3rem',
+                }}
+              >
+                {firstName || t('Προφίλ', 'Profile')}
+                <span style={{ fontSize: '0.65rem' }}>▼</span>
               </button>
-            </>
+              {userMenuOpen && (
+                <div style={{ ...dropdownStyle, left: 'auto', right: 0, transform: 'none', minWidth: '160px' }}>
+                  <Link href="/dashboard" style={dropdownLinkStyle(pathname === '/dashboard')} onClick={() => setUserMenuOpen(false)}>
+                    🏠 {t('Dashboard', 'Dashboard')}
+                  </Link>
+                  {isAdmin && (
+                    <Link href="/admin" style={dropdownLinkStyle(pathname === '/admin')} onClick={() => setUserMenuOpen(false)}>
+                      ⚙️ Admin Panel
+                    </Link>
+                  )}
+                  <button onClick={handleLogout} style={{
+                    width: '100%', background: 'none', border: 'none',
+                    padding: '0.6rem 1rem', borderRadius: '6px',
+                    color: '#f77e7e', fontSize: '0.88rem', cursor: 'pointer',
+                    textAlign: 'left', fontFamily: 'Outfit, sans-serif',
+                    marginTop: '0.25rem', borderTop: '1px solid var(--border)',
+                  }}>
+                    🚪 {t('Αποσύνδεση', 'Logout')}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button onClick={handleLogin} style={{
+              background: 'var(--accent)', border: 'none', borderRadius: '6px',
+              padding: '0.4rem 1rem', color: 'var(--bg)', fontSize: '0.85rem',
+              fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
+            }}>
+              {t('Σύνδεση', 'Login')}
+            </button>
           )}
         </div>
+      </nav>
+
+      {/* GLOBAL DRAWER */}
+      {drawerOpen && (
+        <>
+          <div onClick={() => setDrawerOpen(false)} style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+            zIndex: 500, backdropFilter: 'blur(4px)',
+          }} />
+          <div style={{
+            position: 'fixed', top: 0, left: 0, bottom: 0,
+            width: '300px', maxWidth: '85vw',
+            background: 'var(--bg-card)',
+            borderRight: '1px solid var(--border)',
+            zIndex: 600, display: 'flex', flexDirection: 'column',
+            overflowY: 'auto',
+          }}>
+            {/* Drawer header */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.2rem', color: 'var(--accent)', letterSpacing: '0.05em' }}>
+                🐾 DOG OLYMPIC GAMES
+              </span>
+              <button onClick={() => setDrawerOpen(false)} style={{
+                background: 'none', border: 'none',
+                color: 'var(--text-secondary)', fontSize: '1.2rem', cursor: 'pointer',
+              }}>✕</button>
+            </div>
+
+            {/* Drawer content */}
+            <div style={{ flex: 1, padding: '0.5rem' }}>
+
+              {/* About */}
+              {drawerSectionLabel(t('Σχετικά', 'About'))}
+              {aboutLinks.map(link => (
+                <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
+                  {t(link.el, link.en)}
+                </Link>
+              ))}
+
+              {/* Community */}
+              {drawerSectionLabel(t('Κοινότητα', 'Community'))}
+              {communityLinks.map(link => (
+                <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
+                  {t(link.el, link.en)}
+                </Link>
+              ))}
+
+              {/* User section */}
+              {user && (
+                <>
+                  {drawerSectionLabel(firstName || t('Λογαριασμός', 'Account'))}
+                  <Link href="/dashboard" style={drawerLinkStyle(pathname === '/dashboard')}>
+                    🏠 {t('Dashboard', 'Dashboard')}
+                  </Link>
+
+                  {/* Admin */}
+                  {isAdmin && (
+                    <Link href="/admin" style={drawerLinkStyle(pathname === '/admin')}>
+                      ⚙️ Admin Panel
+                    </Link>
+                  )}
+
+                  {/* Role placeholders */}
+                  {roles.includes('judge') && (
+                    <button style={drawerLinkStyle(false)} disabled>
+                      ⚖️ {t('Πίνακας Κριτή', 'Judge Panel')} <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>coming soon</span>
+                    </button>
+                  )}
+                  {roles.includes('organizer') && (
+                    <button style={drawerLinkStyle(false)} disabled>
+                      📋 {t('Πίνακας Διοργανωτή', 'Organizer Panel')} <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>coming soon</span>
+                    </button>
+                  )}
+                  {roles.includes('decoy') && (
+                    <button style={drawerLinkStyle(false)} disabled>
+                      🎯 {t('Πίνακας Decoy', 'Decoy Panel')} <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>coming soon</span>
+                    </button>
+                  )}
+
+                  {/* Logout */}
+                  <button onClick={handleLogout} style={{ ...drawerLinkStyle(false), color: '#f77e7e', marginTop: '0.5rem', borderTop: '1px solid var(--border)', borderRadius: 0 }}>
+                    🚪 {t('Αποσύνδεση', 'Logout')}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       <style>{`
+        .hamburger-always { display: flex !important; }
+        .hamburger-mobile { display: none; }
         @media (max-width: 768px) {
           .desktop-nav { display: none !important; }
-          .hamburger { display: block !important; }
+          .hamburger-mobile { display: flex !important; }
           .logo-text { display: none; }
         }
       `}</style>
-    </nav>
+    </>
   )
 }
