@@ -76,11 +76,13 @@ export default function MyTeamPage() {
   }
 
   async function loadTeamData(teamId: string, userId: string, captainId: string) {
-    const { data: mems } = await supabase
+    const { data: mems, error: memsError } = await supabase
       .from('team_members')
       .select('user_id, profiles!team_members_user_id_fkey(id, full_name, avatar_url, member_id)')
       .eq('team_id', teamId)
       .eq('status', 'accepted')
+       console.log('mems:', JSON.stringify(mems))
+      console.log('mems error:', memsError)
     setMembers(mems || [])
 
     if (userId === captainId) {
