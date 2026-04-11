@@ -74,7 +74,7 @@ export default function MyTeamPage() {
 
     setLoading(false)
   }
-
+//console in here
   async function loadTeamData(teamId: string, userId: string, captainId: string) {
     const { data: mems, error: memsError } = await supabase
       .from('team_members')
