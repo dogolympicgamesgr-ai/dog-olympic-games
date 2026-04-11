@@ -20,15 +20,21 @@ export default function TeamBadge({ team, isLeader }: { team: any, isLeader: boo
   return (
     <div style={{ textAlign: 'center' }}>
       <Link href={`/teams/${team.id}`} style={{ textDecoration: 'none' }}>
-        <div style={{
-          width: '72px', height: '72px', borderRadius: '50%',
-          border: '2px solid var(--accent)',
-          background: 'var(--bg-card)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 0.5rem', fontSize: '2rem',
-          boxShadow: '0 0 15px rgba(232,185,79,0.2)',
-          cursor: 'pointer', transition: 'transform 0.15s',
-        }}>🛡️</div>
+      <div style={{
+  width: '72px', height: '72px', borderRadius: '50%',
+  border: '2px solid var(--accent)',
+  background: 'var(--bg-card)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  margin: '0 auto 0.5rem', fontSize: '2rem',
+  boxShadow: '0 0 15px rgba(232,185,79,0.2)',
+  cursor: 'pointer', transition: 'transform 0.15s',
+  overflow: 'hidden',
+}}>
+  {team.avatar_url
+    ? <img src={team.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+    : '🛡️'
+  }
+</div>
       </Link>
       <p style={{
         color: 'var(--accent)', fontFamily: 'Bebas Neue, sans-serif',
