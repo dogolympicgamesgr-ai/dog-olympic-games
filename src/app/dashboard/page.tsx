@@ -17,7 +17,6 @@ export default function DashboardPage() {
   const router = useRouter()
   const supabase = createClient()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const loadedRef = useRef(false)
 
   useEffect(() => {
     const handler = () => setDrawerOpen(true)
@@ -32,26 +31,25 @@ export default function DashboardPage() {
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-useEffect(() => {
-  async function init() {
-    try {
-      const res = await fetch('/auth/session')
-      const { user } = await res.json()
-      if (!user) { setLoading(false); router.push('/'); return }
-      await loadDashboard(user.id)
-    } catch (err) {
-      console.error(err)
-      setLoading(false)
+  useEffect(() => {
+    async function init() {
+      try {
+        const res = await fetch('/auth/session')
+        const { user } = await res.json()
+        if (!user) { setLoading(false); router.push('/'); return }
+        await loadDashboard(user.id)
+      } catch (err) {
+        console.error(err)
+        setLoading(false)
+      }
     }
-  }
-  init()
+    init()
 
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-    if (event === 'SIGNED_OUT') router.push('/')
-    if (event === 'SIGNED_IN') init()
-  })
-  return () => subscription.unsubscribe()
-}, [])
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') router.push('/')
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   async function loadDashboard(userId?: string) {
     try {
@@ -61,7 +59,6 @@ useEffect(() => {
         if (!user) { router.push('/'); return }
         uid = user.id
       }
-
       const [profileRes, rolesRes, teamMemberRes, dogsRes, resultsRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', uid).single(),
         supabase.from('user_roles').select('role').eq('user_id', uid),
@@ -69,7 +66,6 @@ useEffect(() => {
         supabase.from('dogs').select('*').eq('owner_id', uid),
         supabase.from('competition_results').select('*, events(*), dogs(name)').eq('owner_id', uid).eq('status', 'approved').order('created_at', { ascending: false }),
       ])
-
       setProfile(profileRes.data)
       setRoles(rolesRes.data?.map((r: any) => r.role) || [])
       setTeam(teamMemberRes.data?.teams || null)
@@ -90,45 +86,89 @@ useEffect(() => {
     </div>
   )
 
-  const displayRoles = roles.filter(r => r !== 'participant')
+  const displayRoles = roles.filter(r => r !== 'participant' && r !== 'admin')
+  const isAdmin = roles.includes('admin')
   const isTeamLeader = team && team.created_by === profile?.id
 
   return (
-    <div style={{ minHeight: '90vh', padding: '2rem 1rem', maxWidth: '900px', margin: '0 auto', position: 'relative' }}>
-      <DashboardDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-      />
+    <div style={{ minHeight: '90vh', padding: '2rem 1rem', maxWidth: '900px', margin: '0 auto' }}>
+      <DashboardDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+      {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: '2rem', paddingTop: '1rem' }}>
-        <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.5rem)', fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+        <h1 style={{
+          fontSize: 'clamp(1.5rem, 4vw, 2.5rem)',
+          fontFamily: 'Bebas Neue, sans-serif',
+          letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.25rem',
+        }}>
           {profile?.full_name || t('Χρήστης', 'User')}
         </h1>
+        {isAdmin && (
+          <p style={{ color: '#f77e7e', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+            ● Admin
+          </p>
+        )}
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.2rem' }}>
           Member ID: {profile?.member_id || '—'}
         </p>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.2rem' }}>
-          {profile?.email}
+          {profile?.display_email || profile?.email}
         </p>
         {profile?.show_phone && profile?.phone && (
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{profile.phone}</p>
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', alignItems: 'center', gap: '1rem', marginBottom: '2.5rem' }} className="dashboard-middle">
-        <TeamBadge team={team} isLeader={isTeamLeader} />
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <RoleBadges roles={displayRoles} isTeamLeader={isTeamLeader} />
+      {/* Circle layout — desktop */}
+      <div className="circles-desktop" style={{
+        display: 'grid',
+        gridTemplateColumns: '120px 1fr 120px',
+        alignItems: 'center',
+        gap: '1rem',
+        marginBottom: '2.5rem',
+        minHeight: '220px',
+      }}>
+        {/* Left — team */}
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <TeamBadge team={team} isLeader={isTeamLeader} />
+        </div>
+
+        {/* Center — profile + role arc */}
+        <div style={{
+          position: 'relative',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: '220px',
+        }}>
+          <RoleBadges roles={displayRoles} />
+          <ProfileCircle profile={profile} onUpload={() => loadDashboard()} />
+          <DogCircles dogs={dogs} />
+        </div>
+
+        {/* Right — spacer (dogs are absolutely positioned in center) */}
+        <div />
+      </div>
+
+      {/* Mobile layout */}
+      <div className="circles-mobile" style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
           <ProfileCircle profile={profile} onUpload={() => loadDashboard()} />
         </div>
-        <DogCircles dogs={dogs} />
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <TeamBadge team={team} isLeader={isTeamLeader} />
+          <RoleBadges roles={displayRoles} />
+          <DogCircles dogs={dogs} />
+        </div>
       </div>
 
       <StatsCircles dogCount={dogs.length} eventCount={results.length} dogs={dogs} results={results} />
       <EventsList results={results} profile={profile} />
 
       <style>{`
+        .circles-desktop { display: grid !important; }
+        .circles-mobile { display: none !important; }
         @media (max-width: 600px) {
-          .dashboard-middle { grid-template-columns: 1fr !important; }
+          .circles-desktop { display: none !important; }
+          .circles-mobile { display: block !important; }
         }
       `}</style>
     </div>

@@ -1,52 +1,111 @@
 'use client'
-
 import { useLang } from '@/context/LanguageContext'
 
 const roleConfig: Record<string, { icon: string; el: string; en: string; color: string }> = {
-  admin:     { icon: '👑', el: 'Admin',      en: 'Admin',      color: '#e8b94f' },
-  judge:     { icon: '⚖️', el: 'Κριτής',    en: 'Judge',      color: '#7eb8f7' },
-  organizer: { icon: '📋', el: 'Διοργανωτής', en: 'Organizer', color: '#7ef7a0' },
-  decoy:     { icon: '🎯', el: 'Decoy',      en: 'Decoy',      color: '#f77e7e' },
+  judge:     { icon: '⚖️', el: 'Κριτής',      en: 'Judge',      color: '#7eb8f7' },
+  organizer: { icon: '📋', el: 'Διοργανωτής', en: 'Organizer',  color: '#7ef7a0' },
+  decoy:     { icon: '🎯', el: 'Decoy',        en: 'Decoy',      color: '#f77e7e' },
 }
 
-const positions = [
-  { top: '-60px', left: '-80px' },
-  { top: '20px',  left: '-100px' },
-  { top: '100px', left: '-70px' },
-  { top: '-60px', right: '-80px' },
-]
+// Arc on left side: angles from 210° down to 150° (going upward)
+// Center of profile circle is at (0,0), radius 148px from center
+const ARC_RADIUS = 148
+const LEFT_ANGLES_DEG = [210, 180, 150] // up to 3 roles
 
-export default function RoleBadges({ roles, isTeamLeader }: { roles: string[], isTeamLeader: boolean }) {
+function degToRad(deg: number) { return (deg * Math.PI) / 180 }
+
+export default function RoleBadges({ roles }: { roles: string[] }) {
   const { t } = useLang()
-  const allRoles = [...roles]
-  if (isTeamLeader && !allRoles.includes('team_leader')) allRoles.push('team_leader')
+  const filtered = roles.filter(r => roleConfig[r]).slice(0, 3)
 
-  const teamLeaderConfig = { icon: '🏅', el: 'Αρχηγός', en: 'Team Leader', color: '#f7c77e' }
+  // Calculate evenly spaced angles based on count
+  function getAngles(count: number): number[] {
+    if (count === 1) return [180]
+    if (count === 2) return [210, 150]
+    return [220, 180, 140]
+  }
+
+  const angles = getAngles(filtered.length)
 
   return (
     <>
-      {allRoles.slice(0, 4).map((role, i) => {
-        const cfg = role === 'team_leader' ? teamLeaderConfig : roleConfig[role]
-        if (!cfg) return null
-        const pos = positions[i]
-        return (
-          <div key={role} style={{
-            position: 'absolute',
-            ...pos,
-            width: '64px', height: '64px', borderRadius: '50%',
-            background: 'var(--bg-card)',
-            border: `2px solid ${cfg.color}`,
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.6rem', fontWeight: 600,
-            color: cfg.color, gap: '2px',
-            zIndex: 2, boxShadow: `0 0 12px ${cfg.color}33`,
-          }}>
-            <span style={{ fontSize: '1.2rem' }}>{cfg.icon}</span>
-            <span>{t(cfg.el, cfg.en)}</span>
-          </div>
-        )
-      })}
+      {/* Desktop arc — absolute positioned */}
+      <div className="role-badges-desktop">
+        {filtered.map((role, i) => {
+          const cfg = roleConfig[role]
+          const angle = degToRad(angles[i])
+          const x = ARC_RADIUS * Math.cos(angle)
+          const y = ARC_RADIUS * Math.sin(angle)
+          return (
+            <div key={role} style={{
+              position: 'absolute',
+              left: `calc(50% + ${x}px - 32px)`,
+              top: `calc(50% + ${y}px - 32px)`,
+              width: '64px', height: '64px', borderRadius: '50%',
+              background: 'var(--bg-card)',
+              border: `2px solid ${cfg.color}`,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: '1px', zIndex: 2,
+              boxShadow: `0 0 12px ${cfg.color}44`,
+              flexShrink: 0,
+            }}>
+              <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{cfg.icon}</span>
+              <span style={{
+                fontSize: '0.52rem', fontWeight: 600, color: cfg.color,
+                textAlign: 'center', padding: '0 4px', lineHeight: 1.2,
+                maxWidth: '60px', overflow: 'hidden',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              }}>
+                {t(cfg.el, cfg.en)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Mobile row — shown via CSS */}
+      <div className="role-badges-mobile">
+        {filtered.map(role => {
+          const cfg = roleConfig[role]
+          return (
+            <div key={role} style={{
+              width: '56px', height: '56px', borderRadius: '50%',
+              background: 'var(--bg-card)',
+              border: `2px solid ${cfg.color}`,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: '1px', flexShrink: 0,
+              boxShadow: `0 0 12px ${cfg.color}44`,
+            }}>
+              <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>{cfg.icon}</span>
+              <span style={{
+                fontSize: '0.48rem', fontWeight: 600, color: cfg.color,
+                textAlign: 'center', padding: '0 3px', lineHeight: 1.2,
+                maxWidth: '52px', overflow: 'hidden',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              }}>
+                {t(cfg.el, cfg.en)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      <style>{`
+        .role-badges-desktop { display: contents; }
+        .role-badges-mobile { display: none; }
+        @media (max-width: 600px) {
+          .role-badges-desktop { display: none !important; }
+          .role-badges-mobile {
+            display: flex !important;
+            flex-direction: row;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+          }
+        }
+      `}</style>
     </>
   )
 }
