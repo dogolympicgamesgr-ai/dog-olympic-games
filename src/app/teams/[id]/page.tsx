@@ -27,17 +27,22 @@ export default function TeamProfilePage({ params }: { params: { id: string } }) 
   useEffect(() => { load() }, [teamId])
 
   async function load() {
-    setLoading(true)
+  setLoading(true)
 
-    const { data: teamData } = await supabase
-      .from('teams').select('*').eq('id', teamId).single()
-    if (!teamData) { setLoading(false); return }
-    setTeam(teamData)
+  const result = await supabase
+    .from('teams').select('*').eq('id', teamId).single()
 
-    const { data: captainData } = await supabase
-      .from('profiles').select('id, full_name, avatar_url, member_id')
-      .eq('id', teamData.created_by).single()
-    setCaptain(captainData)
+  console.log('teamData:', result.data)
+  console.log('teamError:', result.error)
+
+  if (!result.data) { setLoading(false); return }
+  const teamData = result.data
+  setTeam(teamData)
+
+  const { data: captainData } = await supabase
+    .from('profiles').select('id, full_name, avatar_url, member_id')
+    .eq('id', teamData.created_by).single()
+  setCaptain(captainData)
 
     // Get accepted members
     const { data: memberRows } = await supabase
