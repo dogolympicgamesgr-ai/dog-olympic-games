@@ -46,7 +46,7 @@ export default function ProfileCircle({ profile, onUpload, readOnly = false }: {
 
   return (
     <>
-      <div style={{ position: 'relative', width: '200px', height: '200px', flexShrink: 0 }}>
+      <div style={{ position: 'relative', width: '200px', height: '200px', flexShrink: 0, overflow: 'visible' }}>
         <div
           onClick={() => avatarUrl && setLightbox(true)}
           style={{

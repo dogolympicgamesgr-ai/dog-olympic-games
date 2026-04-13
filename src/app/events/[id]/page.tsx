@@ -37,6 +37,12 @@ export default function EventDetailPage() {
   const [assignLoading, setAssignLoading] = useState(false)
   const [assignMsg, setAssignMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
+  // Phase 1 — Attendance + Close Event
+  const [allRegistrations, setAllRegistrations] = useState<any[]>([])
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, 'attended' | 'no_show'>>({})
+  const [closeLoading, setCloseLoading] = useState(false)
+  const [closeMsg, setCloseMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
   useEffect(() => {
     if (id) load(id as string)
   }, [id])
@@ -74,7 +80,7 @@ export default function EventDetailPage() {
       const [dogsRes, regsRes] = await Promise.all([
         supabase.from('dogs').select('id, name, dog_id')
           .eq('owner_id', sessionRes.user.id).eq('status', 'active'),
-        supabase.from('event_registrations').select('id, category_id, dog_id, status')
+        supabase.from('event_registrations').select('id, category_id, dog_id, status, attendance_status')
           .eq('owner_id', sessionRes.user.id)
           .in('category_id', (eventRes.data.event_categories || []).map((c: any) => c.id))
       ])
@@ -82,16 +88,46 @@ export default function EventDetailPage() {
       setRegistrations(regsRes.data || [])
     }
 
+    // Load all registrations for organizer attendance panel
+    const isOrganizerOrAdmin = sessionRes?.isAdmin ||
+      sessionRes?.roles?.includes('organizer') ||
+      sessionRes?.user?.id === eventRes.data.created_by
+
+    if (isOrganizerOrAdmin) {
+      await loadAllRegistrations(eventId, eventRes.data.event_categories || [])
+    }
+
     await loadAssignments(eventId, sessionRes)
     setLoading(false)
   }
 
-  async function loadAssignments(eventId: string, sessionRes: any) {
-    const isOrganizerOrAdmin = sessionRes?.isAdmin ||
-      sessionRes?.roles?.includes('organizer') ||
-      sessionRes?.user?.id === event?.created_by
+  async function loadAllRegistrations(eventId: string, cats: any[]) {
+    const catIds = cats.map((c: any) => c.id)
+    if (catIds.length === 0) return
 
-    // Public sees accepted only — organizer/admin sees all
+    const { data } = await supabase
+      .from('event_registrations')
+      .select(`
+        id, category_id, dog_id, owner_id, status, attendance_status,
+        dogs!event_registrations_dog_id_fkey(id, name, dog_id),
+        profiles!event_registrations_owner_id_fkey(id, full_name, member_id)
+      `)
+      .in('category_id', catIds)
+      .eq('status', 'confirmed')
+
+    setAllRegistrations(data || [])
+
+    // Pre-populate attendanceMap from existing attendance_status
+    const map: Record<string, 'attended' | 'no_show'> = {}
+    ;(data || []).forEach((r: any) => {
+      if (r.attendance_status === 'attended' || r.attendance_status === 'no_show') {
+        map[r.id] = r.attendance_status
+      }
+    })
+    setAttendanceMap(map)
+  }
+
+  async function loadAssignments(eventId: string, sessionRes: any) {
     let q = supabase
       .from('event_assignments')
       .select(`
@@ -104,7 +140,6 @@ export default function EventDetailPage() {
     const { data } = await q
     setAssignments(data || [])
 
-    // Load available judges/decoys for organizer invite panel
     if (sessionRes?.isAdmin || sessionRes?.roles?.includes('organizer')) {
       const [judgeRoles, decoyRoles] = await Promise.all([
         supabase.from('user_roles').select('user_id, profiles!user_roles_user_id_fkey(id, full_name, member_id)').eq('role', 'judge'),
@@ -132,9 +167,6 @@ export default function EventDetailPage() {
     if (error) {
       setAssignMsg({ type: 'error', text: t('Σφάλμα. Ίσως έχει ήδη προσκληθεί.', 'Error. They may already be invited.') })
     } else {
-      // Send notification to invited user
-      const profile = (invitingRole.role === 'judge' ? availableJudges : availableDecoys)
-        .find((u: any) => u.user_id === selectedInviteUser)
       const categoryLabel = invitingRole.categoryId
         ? categories.find(c => c.id === invitingRole.categoryId)?.title_el || ''
         : ''
@@ -172,6 +204,51 @@ export default function EventDetailPage() {
     await supabase.from('event_assignments').update({ status: newStatus }).eq('id', assignmentId)
     await loadAssignments(id as string, session)
     setAssignLoading(false)
+  }
+
+  // Phase 1 — Close event with attendance
+  async function handleCloseEvent() {
+    setCloseLoading(true)
+    setCloseMsg(null)
+
+    // Check all registrations have been marked
+    const unmarked = allRegistrations.filter(r => !attendanceMap[r.id])
+    if (unmarked.length > 0) {
+      setCloseMsg({
+        type: 'error',
+        text: t(
+          `Σήμανε παρουσία/απουσία για όλους τους συμμετέχοντες (${unmarked.length} εκκρεμούν)`,
+          `Mark attendance for all participants (${unmarked.length} remaining)`
+        )
+      })
+      setCloseLoading(false)
+      return
+    }
+
+    // Update attendance_status for all registrations
+    const updates = allRegistrations.map(r =>
+      supabase
+        .from('event_registrations')
+        .update({ attendance_status: attendanceMap[r.id] })
+        .eq('id', r.id)
+    )
+    await Promise.all(updates)
+
+    // Mark event as completed
+    const { error } = await supabase
+      .from('events')
+      .update({ status: 'completed' })
+      .eq('id', id)
+
+    if (error) {
+      setCloseMsg({ type: 'error', text: t('Σφάλμα ολοκλήρωσης αγώνα', 'Error completing event') })
+    } else {
+      setCloseMsg({ type: 'success', text: t('Ο αγώνας ολοκληρώθηκε!', 'Event completed!') })
+      // Refresh event status
+      const { data } = await supabase.from('events').select('*').eq('id', id as string).single()
+      if (data) setEvent(data)
+    }
+    setCloseLoading(false)
   }
 
   // ── helpers ──────────────────────────────────────────────
@@ -221,13 +298,13 @@ export default function EventDetailPage() {
     setRegMsg(null)
     const { error } = await supabase.from('event_registrations').insert({
       category_id: catId, dog_id: selectedDog,
-      owner_id: session.user.id, status: 'pending',
+      owner_id: session.user.id, status: 'confirmed',
     })
     if (error) {
       setRegMsg({ type: 'error', text: t('Σφάλμα εγγραφής. Ίσως είστε ήδη εγγεγραμμένοι.', 'Registration error. You may already be registered.') })
     } else {
-      setRegMsg({ type: 'success', text: t('Εγγραφή υποβλήθηκε!', 'Registration submitted!') })
-      const { data } = await supabase.from('event_registrations').select('id, category_id, dog_id, status')
+      setRegMsg({ type: 'success', text: t('Εγγραφή ολοκληρώθηκε!', 'Registration confirmed!') })
+      const { data } = await supabase.from('event_registrations').select('id, category_id, dog_id, status, attendance_status')
         .eq('owner_id', session.user.id).in('category_id', categories.map(c => c.id))
       setRegistrations(data || [])
       setRegisteringCat(null)
@@ -239,7 +316,7 @@ export default function EventDetailPage() {
   async function handleCancelReg(regId: string) {
     setRegLoading(true)
     await supabase.from('event_registrations').delete().eq('id', regId)
-    const { data } = await supabase.from('event_registrations').select('id, category_id, dog_id, status')
+    const { data } = await supabase.from('event_registrations').select('id, category_id, dog_id, status, attendance_status')
       .eq('owner_id', session.user.id).in('category_id', categories.map(c => c.id))
     setRegistrations(data || [])
     setRegLoading(false)
@@ -266,12 +343,13 @@ export default function EventDetailPage() {
   const isLoggedIn = !!session?.user
   const isOrganizerOrAdmin = session?.isAdmin || session?.roles?.includes('organizer') || session?.user?.id === event.created_by
   const isMyEvent = session?.user?.id === event.created_by
+  const canCloseEvent = (isMyEvent || session?.isAdmin) && event.status === 'approved'
+  const isCompleted = event.status === 'completed'
 
   // Split assignments
   const decoyAssignments = assignments.filter(a => a.role === 'decoy')
   const judgeAssignments = assignments.filter(a => a.role === 'judge')
 
-  // What the current user can see: accepted always, pending only if organizer/admin or it's their own
   const visibleDecoys = decoyAssignments.filter(a =>
     a.status === 'accepted' || isOrganizerOrAdmin || a.user_id === session?.user?.id
   )
@@ -279,10 +357,19 @@ export default function EventDetailPage() {
     a.status === 'accepted' || isOrganizerOrAdmin || a.user_id === session?.user?.id
   )
 
-  // My pending assignment requests (for accept/decline UI)
   const myPendingAssignments = assignments.filter(a =>
     a.user_id === session?.user?.id && a.status === 'pending'
   )
+
+  // Group all registrations by category for attendance panel
+  const regsByCategory = categories.map(cat => ({
+    ...cat,
+    regs: allRegistrations.filter(r => r.category_id === cat.id)
+  })).filter(cat => cat.regs.length > 0)
+
+  const attendedCount = Object.values(attendanceMap).filter(v => v === 'attended').length
+  const noShowCount = Object.values(attendanceMap).filter(v => v === 'no_show').length
+  const unmarkedCount = allRegistrations.length - Object.keys(attendanceMap).length
 
   const cardStyle: React.CSSProperties = {
     background: 'var(--bg-card)',
@@ -340,11 +427,11 @@ export default function EventDetailPage() {
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
           <span style={{
             fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.7rem', borderRadius: '99px',
-            background: upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg-card)',
-            color: upcoming ? 'var(--accent)' : 'var(--text-secondary)',
-            border: `1px solid ${upcoming ? 'var(--accent)' : 'var(--border)'}`,
+            background: isCompleted ? 'rgba(120,120,255,0.15)' : upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg-card)',
+            color: isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--text-secondary)',
+            border: `1px solid ${isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--border)'}`,
           }}>
-            {upcoming ? t('Επερχόμενος', 'Upcoming') : t('Ολοκληρώθηκε', 'Past')}
+            {isCompleted ? t('✅ Ολοκληρώθηκε', '✅ Completed') : upcoming ? t('Επερχόμενος', 'Upcoming') : t('Παρελθόν', 'Past')}
           </span>
           {event.team_event && (
             <span style={{
@@ -499,7 +586,6 @@ export default function EventDetailPage() {
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      {/* Organizer: invite judge button */}
                       {isOrganizerOrAdmin && (
                         <button onClick={() => {
                           setInvitingRole(isInvitingJudgeHere ? null : { role: 'judge', categoryId: cat.id })
@@ -514,7 +600,6 @@ export default function EventDetailPage() {
                           ⚖️ {t('+ Κριτής', '+ Judge')}
                         </button>
                       )}
-                      {/* Registration button */}
                       {userReg ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span style={{
@@ -525,7 +610,7 @@ export default function EventDetailPage() {
                           }}>
                             {regStatusLabel(userReg.status)}
                           </span>
-                          {userReg.status === 'pending' && regOpen && (
+                          {userReg.status === 'confirmed' && regOpen && (
                             <button onClick={() => handleCancelReg(userReg.id)} disabled={regLoading}
                               style={{
                                 background: 'none', border: '1px solid #f77e7e', borderRadius: '6px',
@@ -554,7 +639,6 @@ export default function EventDetailPage() {
                     </div>
                   </div>
 
-                  {/* Judges for this category */}
                   {catJudges.length > 0 && (
                     <div style={{ marginTop: '0.65rem', paddingTop: '0.65rem', borderTop: '1px solid var(--border)' }}>
                       <p style={{ margin: '0 0 0.4rem', fontSize: '0.72rem', color: 'var(--text-secondary)', letterSpacing: '0.03em' }}>
@@ -590,7 +674,6 @@ export default function EventDetailPage() {
                     </div>
                   )}
 
-                  {/* Invite judge inline form */}
                   {isInvitingJudgeHere && (
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
                       {assignMsg && (
@@ -627,7 +710,6 @@ export default function EventDetailPage() {
                     </div>
                   )}
 
-                  {/* Registration dog picker */}
                   {isRegistering && !userReg && (
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
                       {userDogs.length === 0 ? (
@@ -693,7 +775,6 @@ export default function EventDetailPage() {
             )}
           </div>
 
-          {/* Invite decoy form */}
           {invitingRole?.role === 'decoy' && (
             <div style={{ marginBottom: '1rem' }}>
               {assignMsg && (
@@ -776,6 +857,162 @@ export default function EventDetailPage() {
             ))}
           </div>
         </div>
+
+        {/* ── PHASE 1: Organizer Attendance + Close Event ── */}
+        {canCloseEvent && (
+          <div style={{ ...cardStyle, border: '1px solid rgba(212,175,55,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <p style={{ ...sectionTitle, margin: 0 }}>
+                📋 {t('Παρουσίες & Κλείσιμο Αγώνα', 'Attendance & Close Event')}
+              </p>
+              {/* Live counter */}
+              <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.72rem' }}>
+                <span style={{ background: '#7ef7a022', border: '1px solid #7ef7a0', borderRadius: '99px', padding: '0.2rem 0.6rem', color: '#7ef7a0', fontWeight: 700 }}>
+                  ✓ {attendedCount}
+                </span>
+                <span style={{ background: '#f77e7e22', border: '1px solid #f77e7e', borderRadius: '99px', padding: '0.2rem 0.6rem', color: '#f77e7e', fontWeight: 700 }}>
+                  ✗ {noShowCount}
+                </span>
+                {unmarkedCount > 0 && (
+                  <span style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '99px', padding: '0.2rem 0.6rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
+                    ? {unmarkedCount}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {allRegistrations.length === 0 ? (
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                {t('Δεν υπάρχουν εγγεγραμμένοι συμμετέχοντες', 'No registered participants')}
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+                {regsByCategory.map(cat => (
+                  <div key={cat.id}>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--accent)', fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.04em', margin: '0 0 0.4rem' }}>
+                      {t(cat.title_el, cat.title_en || cat.title_el)}
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      {cat.regs.map((r: any) => {
+                        const status = attendanceMap[r.id]
+                        return (
+                          <div key={r.id} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: 'var(--bg)', border: `1px solid ${
+                              status === 'attended' ? '#7ef7a044' :
+                              status === 'no_show' ? '#f77e7e44' : 'var(--border)'
+                            }`,
+                            borderRadius: '10px', padding: '0.6rem 0.85rem',
+                            flexWrap: 'wrap', gap: '0.5rem',
+                          }}>
+                            <div>
+                              <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem' }}>
+                                {r.profiles?.full_name}
+                                <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.75rem' }}>
+                                  {' '}(#{r.profiles?.member_id})
+                                </span>
+                              </p>
+                              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                🐕 {r.dogs?.name} · {r.dogs?.dog_id}
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button
+                                onClick={() => setAttendanceMap(prev => ({ ...prev, [r.id]: 'attended' }))}
+                                style={{
+                                  background: status === 'attended' ? '#7ef7a0' : 'transparent',
+                                  border: `1px solid ${status === 'attended' ? '#7ef7a0' : 'var(--border)'}`,
+                                  borderRadius: '8px', padding: '0.3rem 0.75rem',
+                                  color: status === 'attended' ? 'var(--bg)' : 'var(--text-secondary)',
+                                  cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif', fontWeight: 700,
+                                  transition: 'all 0.15s',
+                                }}>
+                                ✓ {t('Παρών', 'Present')}
+                              </button>
+                              <button
+                                onClick={() => setAttendanceMap(prev => ({ ...prev, [r.id]: 'no_show' }))}
+                                style={{
+                                  background: status === 'no_show' ? '#f77e7e' : 'transparent',
+                                  border: `1px solid ${status === 'no_show' ? '#f77e7e' : 'var(--border)'}`,
+                                  borderRadius: '8px', padding: '0.3rem 0.75rem',
+                                  color: status === 'no_show' ? 'var(--bg)' : 'var(--text-secondary)',
+                                  cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif', fontWeight: 700,
+                                  transition: 'all 0.15s',
+                                }}>
+                                ✗ {t('Απών', 'Absent')}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {closeMsg && (
+              <div style={{
+                background: closeMsg.type === 'success' ? 'rgba(0,200,100,0.1)' : 'rgba(220,50,50,0.1)',
+                border: `1px solid ${closeMsg.type === 'success' ? 'rgba(0,200,100,0.3)' : 'rgba(220,50,50,0.3)'}`,
+                borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem',
+                color: closeMsg.type === 'success' ? '#00c864' : '#dc3232', fontSize: '0.85rem', fontWeight: 600,
+              }}>
+                {closeMsg.text}
+              </div>
+            )}
+
+            <button
+              onClick={handleCloseEvent}
+              disabled={closeLoading}
+              style={{
+                width: '100%', background: closeLoading ? 'var(--bg-card)' : 'var(--accent)',
+                border: 'none', borderRadius: '10px', padding: '0.85rem',
+                color: closeLoading ? 'var(--text-secondary)' : 'var(--bg)',
+                fontWeight: 700, cursor: closeLoading ? 'not-allowed' : 'pointer',
+                fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.1rem', letterSpacing: '0.05em',
+                opacity: closeLoading ? 0.7 : 1,
+              }}>
+              {closeLoading
+                ? t('Επεξεργασία...', 'Processing...')
+                : t('✅ Κλείσιμο & Ολοκλήρωση Αγώνα', '✅ Close & Complete Event')}
+            </button>
+          </div>
+        )}
+
+        {/* Completed event — attendance summary (read-only for organizer/admin) */}
+        {isCompleted && isOrganizerOrAdmin && allRegistrations.length > 0 && (
+          <div style={{ ...cardStyle, border: '1px solid #a0a0ff44' }}>
+            <p style={{ ...sectionTitle, color: '#a0a0ff' }}>
+              📋 {t('Παρουσίες', 'Attendance Summary')}
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.85rem', color: '#7ef7a0', fontWeight: 600 }}>
+                ✓ {t('Παρόντες', 'Present')}: {allRegistrations.filter(r => r.attendance_status === 'attended').length}
+              </span>
+              <span style={{ fontSize: '0.85rem', color: '#f77e7e', fontWeight: 600 }}>
+                ✗ {t('Απόντες', 'Absent')}: {allRegistrations.filter(r => r.attendance_status === 'no_show').length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {allRegistrations.map((r: any) => (
+                <div key={r.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  fontSize: '0.82rem', padding: '0.4rem 0.65rem',
+                  background: 'var(--bg)', borderRadius: '8px',
+                  border: `1px solid ${r.attendance_status === 'attended' ? '#7ef7a033' : '#f77e7e33'}`,
+                }}>
+                  <span style={{ color: 'var(--text-primary)' }}>
+                    {r.profiles?.full_name} · 🐕 {r.dogs?.name}
+                  </span>
+                  <span style={{ color: r.attendance_status === 'attended' ? '#7ef7a0' : '#f77e7e', fontWeight: 700 }}>
+                    {r.attendance_status === 'attended' ? t('Παρών', 'Present') : t('Απών', 'Absent')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Map */}
         {event.lat && event.lng && (

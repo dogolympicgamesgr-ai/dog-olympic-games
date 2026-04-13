@@ -98,3 +98,8 @@ h1, h2, h3, .display {
 .section-card {
   color: var(--text-primary);
 }
+/* Fix Leaflet controls z-index */
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 400 !important;
+}

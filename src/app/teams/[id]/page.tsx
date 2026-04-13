@@ -62,7 +62,7 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
 
       // Points from rankings (sum over all owner's dogs)
       const { data: rankRows } = await supabase
-        .from('rankings')
+        .from('dog_sport_ranking')
         .select('total_points')
         .eq('owner_id', m.user_id)
       const ownerPoints = (rankRows || []).reduce((sum: number, r: any) => sum + Number(r.total_points || 0), 0)

@@ -16,7 +16,7 @@ export default function CreateEventPage() {
   const [session, setSession] = useState<any>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [sports, setSports] = useState<any[]>([])
-  const [foundationTitles, setFoundationTitles] = useState<string[]>([])
+  // [REMOVED] foundationTitles state
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -47,8 +47,9 @@ export default function CreateEventPage() {
   const [contactEmail, setContactEmail] = useState('')
   const [lightboxOpen, setLightboxOpen] = useState(false)
 
+  // UPDATED: category default with new fields
   const [categories, setCategories] = useState<any[]>([
-    { title_el: '', title_en: '', sport_id: '', required_title: '', max_participants: '', is_championship: false }
+    { title_el: '', title_en: '', sport_id: '', required_foundation: '', required_sport_level: '', max_participants: '', is_championship: false }
   ])
 
   useEffect(() => {
@@ -82,11 +83,7 @@ export default function CreateEventPage() {
       .eq('active', true)
       .order('is_foundation', { ascending: false })
     setSports(data || [])
-    // Build required_title options from foundation sport names
-    const titles = (data || [])
-      .filter((s: any) => s.is_foundation)
-      .map((s: any) => s.name_el)
-    setFoundationTitles(titles)
+    // [REMOVED] foundationTitles logic
   }
 
   // Convert DD/MM/YYYY + HH:MM → ISO string
@@ -133,7 +130,7 @@ export default function CreateEventPage() {
 
   function addCategory() {
     setCategories(prev => [...prev, {
-      title_el: '', title_en: '', sport_id: '', required_title: '', max_participants: '', is_championship: false
+      title_el: '', title_en: '', sport_id: '', required_foundation: '', required_sport_level: '', max_participants: '', is_championship: false
     }])
   }
 
@@ -186,12 +183,14 @@ export default function CreateEventPage() {
       return
     }
 
+    // UPDATED: using new field names
     const catRows = categories.map(cat => ({
       event_id: eventData.id,
       sport_id: cat.sport_id,
       title_el: cat.title_el,
       title_en: cat.title_en || null,
-      required_title: cat.required_title || null,
+      required_foundation: cat.required_foundation || null,
+      required_sport_level: cat.required_sport_level ? parseInt(cat.required_sport_level) : null,
       max_participants: cat.max_participants ? parseInt(cat.max_participants) : null,
       is_championship: cat.is_championship,
     }))
@@ -538,18 +537,28 @@ export default function CreateEventPage() {
                   </div>
                 </div>
 
+                {/* REPLACED: New required fields UI */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', marginBottom: '0.65rem' }}>
                   <div>
-                    <label style={labelStyle}>{t('Απαιτούμενος Τίτλος', 'Required Title')}</label>
+                    <label style={labelStyle}>{t('Απαιτούμενο Επίπεδο', 'Required Foundation')}</label>
                     <select style={{ ...inputStyle, cursor: 'pointer' }}
-                      value={cat.required_title}
-                      onChange={e => updateCategory(index, 'required_title', e.target.value)}>
-                      <option value="">{t('Κανένας — Ανοιχτό σε όλους', 'None — Open to all')}</option>
-                      {foundationTitles.map(title => (
-                        <option key={title} value={title}>{title}</option>
-                      ))}
+                      value={cat.required_foundation}
+                      onChange={e => updateCategory(index, 'required_foundation', e.target.value)}>
+                      <option value="">{t('Κανένα — Ανοιχτό σε όλους', 'None — Open to all')}</option>
+                      <option value="entry">{t('Εισαγωγικό Επίπεδο', 'Entry Level')}</option>
+                      <option value="basic">{t('Βασικό Επίπεδο', 'Basic Level')}</option>
                     </select>
                   </div>
+                  <div>
+                    <label style={labelStyle}>{t('Απαιτούμενο Υποεπίπεδο', 'Required Sport Level')}</label>
+                    <input type="number" min="1" max="3" style={inputStyle}
+                      value={cat.required_sport_level}
+                      onChange={e => updateCategory(index, 'required_sport_level', e.target.value)}
+                      placeholder={t('Κενό = Οποιοδήποτε', 'Empty = Any')} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', marginBottom: '0.65rem' }}>
                   <div>
                     <label style={labelStyle}>{t('Μέγ. Συμμετέχοντες', 'Max Participants')}</label>
                     <input type="number" style={inputStyle} value={cat.max_participants}

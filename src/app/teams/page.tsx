@@ -44,7 +44,7 @@ export default function TeamsPage() {
       let totalPoints = 0
       if (userIds.length > 0) {
         const { data: rankRows } = await supabase
-          .from('rankings')
+          .from('dog_sport_ranking')
           .select('total_points')
           .in('owner_id', userIds)
         totalPoints = (rankRows || []).reduce((sum: number, r: any) => sum + Number(r.total_points || 0), 0)
