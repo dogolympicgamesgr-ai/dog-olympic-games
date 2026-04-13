@@ -42,6 +42,8 @@ export default function EventDetailPage() {
   const [attendanceMap, setAttendanceMap] = useState<Record<string, 'attended' | 'no_show'>>({})
   const [closeLoading, setCloseLoading] = useState(false)
   const [closeMsg, setCloseMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  // Phase 3 — Results (placeholder, filled in Phase 3)
+  const [approvedResults, setApprovedResults] = useState<any[]>([])
 
   useEffect(() => {
     if (id) load(id as string)
@@ -89,13 +91,14 @@ export default function EventDetailPage() {
     }
 
     // Load all registrations for organizer attendance panel
-    const isOrganizerOrAdmin = sessionRes?.isAdmin ||
-      sessionRes?.roles?.includes('organizer') ||
-      sessionRes?.user?.id === eventRes.data.created_by
+  const isOrganizerOrAdmin = sessionRes?.isAdmin ||
+  sessionRes?.roles?.includes('organizer') ||
+  sessionRes?.user?.id === eventRes.data.created_by
 
-    if (isOrganizerOrAdmin) {
-      await loadAllRegistrations(eventId, eventRes.data.event_categories || [])
-    }
+const eventStatus = eventRes.data.status
+if (sessionRes?.user && (eventStatus === 'approved' || eventStatus === 'completed')) {
+  await loadAllRegistrations(eventId, eventRes.data.event_categories || [])
+}
 
     await loadAssignments(eventId, sessionRes)
     setLoading(false)
@@ -600,27 +603,46 @@ export default function EventDetailPage() {
                           ⚖️ {t('+ Κριτής', '+ Judge')}
                         </button>
                       )}
-                      {userReg ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{
-                            fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.65rem', borderRadius: '99px',
-                            color: regStatusColor(userReg.status),
-                            background: `${regStatusColor(userReg.status)}22`,
-                            border: `1px solid ${regStatusColor(userReg.status)}`,
-                          }}>
-                            {regStatusLabel(userReg.status)}
-                          </span>
-                          {userReg.status === 'confirmed' && regOpen && (
-                            <button onClick={() => handleCancelReg(userReg.id)} disabled={regLoading}
-                              style={{
-                                background: 'none', border: '1px solid #f77e7e', borderRadius: '6px',
-                                padding: '0.2rem 0.5rem', color: '#f77e7e', cursor: 'pointer',
-                                fontSize: '0.72rem', fontFamily: 'Outfit, sans-serif'
-                              }}>
-                              {t('Ακύρωση', 'Cancel')}
-                            </button>
-                          )}
-                        </div>
+                     {userReg ? (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+    {(() => {
+      const dogName = userDogs.find(d => d.id === userReg.dog_id)?.name || '—'
+      const catTitle = t(cat.title_el, cat.title_en || cat.title_el)
+      const canCancel = userReg.status === 'confirmed'
+        && event.status !== 'completed'
+        && event.status !== 'cancelled'
+        && new Date(event.event_date) > new Date()
+      return (
+        <div style={{
+          background: 'rgba(212,175,55,0.08)',
+          border: '1px solid rgba(212,175,55,0.25)',
+          borderRadius: '10px',
+          padding: '0.6rem 0.85rem',
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem', flexWrap: 'wrap',
+          width: '100%',
+        }}>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+            🐕 {t(
+              `Έχεις δηλώσει συμμετοχή με τον/την ${dogName} στην κατηγορία ${catTitle}`,
+              `You registered ${dogName} for ${catTitle}`
+            )}
+          </p>
+          {canCancel && (
+            <button onClick={() => handleCancelReg(userReg.id)} disabled={regLoading}
+              style={{
+                background: 'none', border: '1px solid #f77e7e', borderRadius: '6px',
+                padding: '0.3rem 0.65rem', color: '#f77e7e', cursor: 'pointer',
+                fontSize: '0.75rem', fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap',
+              }}>
+              {t('Ακύρωση Συμμετοχής', 'Cancel Registration')}
+            </button>
+          )}
+        </div>
+      )
+    })()}
+  </div>
                       ) : (
                         isLoggedIn && regOpen && upcoming && (
                           <button onClick={() => {
@@ -658,9 +680,11 @@ export default function EventDetailPage() {
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>
                               {a.profiles?.full_name}
                             </span>
+                            
                             <span style={{ fontSize: '0.65rem', color: assignStatusColor(a.status) }}>
                               {assignStatusLabel(a.status)}
                             </span>
+                                    
                             {isOrganizerOrAdmin && (
                               <button onClick={() => handleRemoveAssignment(a.id)} disabled={assignLoading}
                                 style={{
@@ -857,7 +881,107 @@ export default function EventDetailPage() {
             ))}
           </div>
         </div>
+{/* ── Participants List ── */}
+{isLoggedIn && (event.status === 'approved' || event.status === 'completed') && (
+  <div style={cardStyle}>
+    <p style={sectionTitle}>
+      👥 {t('Συμμετέχοντες', 'Participants')}
+    </p>
 
+    {allRegistrations.length === 0 ? (
+      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+        {t('Δεν υπάρχουν εγγεγραμμένοι συμμετέχοντες ακόμα', 'No registered participants yet')}
+      </p>
+    ) : (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {categories.map(cat => {
+          const catRegs = allRegistrations.filter(r => r.category_id === cat.id)
+          if (catRegs.length === 0) return null
+          return (
+            <div key={cat.id}>
+              <p style={{
+                fontSize: '0.72rem', color: 'var(--accent)',
+                fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.04em',
+                margin: '0 0 0.5rem'
+              }}>
+                {t(cat.title_el, cat.title_en || cat.title_el)} · {t(cat.sports?.name_el, cat.sports?.name_en || cat.sports?.name_el)}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {catRegs.map((r: any) => {
+                  const result = approvedResults.find(res => res.dog_id === r.dog_id && res.category_id === cat.id)
+                  return (
+                    <div key={r.id} style={{
+                      display: 'flex', alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'var(--bg)', borderRadius: '8px',
+                      padding: '0.5rem 0.75rem',
+                      border: `1px solid ${
+                        r.attendance_status === 'no_show' ? '#f77e7e22' :
+                        result?.passed ? '#7ef7a022' :
+                        result && !result.passed ? '#f77e7e22' :
+                        'var(--border)'
+                      }`,
+                      flexWrap: 'wrap', gap: '0.4rem',
+                    }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {r.profiles?.full_name}
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.72rem' }}>
+                            {' '}(#{r.profiles?.member_id})
+                          </span>
+                        </p>
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          🐕 {r.dogs?.name} · {r.dogs?.dog_id}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Attendance — only shown when completed */}
+                        {event.status === 'completed' && (
+                          <span style={{
+                            fontSize: '0.72rem', fontWeight: 700,
+                            padding: '0.2rem 0.55rem', borderRadius: '99px',
+                            color: r.attendance_status === 'attended' ? '#7ef7a0' : '#f77e7e',
+                            background: r.attendance_status === 'attended' ? '#7ef7a022' : '#f77e7e22',
+                            border: `1px solid ${r.attendance_status === 'attended' ? '#7ef7a044' : '#f77e7e44'}`,
+                          }}>
+                            {r.attendance_status === 'attended' ? t('Παρών', 'Present') : t('Απών', 'Absent')}
+                          </span>
+                        )}
+                        {/* Results — Phase 3 will populate approvedResults */}
+                        {result && (
+                          <>
+                            <span style={{
+                              fontSize: '0.72rem', fontWeight: 700,
+                              padding: '0.2rem 0.55rem', borderRadius: '99px',
+                              color: result.passed ? '#7ef7a0' : '#f77e7e',
+                              background: result.passed ? '#7ef7a022' : '#f77e7e22',
+                              border: `1px solid ${result.passed ? '#7ef7a044' : '#f77e7e44'}`,
+                            }}>
+                              {result.passed ? t('Επιτυχία', 'Pass') : t('Αποτυχία', 'Fail')}
+                            </span>
+                            <span style={{
+                              fontSize: '0.72rem', fontWeight: 700,
+                              padding: '0.2rem 0.55rem', borderRadius: '99px',
+                              color: 'var(--accent)',
+                              background: 'rgba(212,175,55,0.1)',
+                              border: '1px solid rgba(212,175,55,0.3)',
+                            }}>
+                              {result.score} pts
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )}
+  </div>
+)}
         {/* ── PHASE 1: Organizer Attendance + Close Event ── */}
         {canCloseEvent && (
           <div style={{ ...cardStyle, border: '1px solid rgba(212,175,55,0.4)' }}>
