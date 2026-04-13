@@ -49,11 +49,11 @@ export default function EventDetailPage() {
     const [eventRes, sessionRes] = await Promise.all([
       supabase
         .from('events')
-        .select(`*, event_categories(
-          id, title_el, title_en, required_title,
-          max_participants, is_championship,
-          sports(name_el, name_en, is_foundation)
-        )`)
+.select(`*, event_categories(
+  id, title_el, title_en, required_foundation, required_sport_level,
+  max_participants, is_championship,
+  sports(name_el, name_en, is_foundation)
+)`)
         .eq('id', eventId)
         .single(),
       fetch('/auth/session').then(r => r.json())
@@ -519,7 +519,7 @@ export default function EventDetailPage() {
                       </p>
                       <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                         {sportName}
-                        {cat.required_title && ` · ${t('Απαιτείται', 'Requires')}: ${cat.required_title}`}
+                        {cat.required_foundation && ` · ${t('Απαιτείται', 'Requires')}: ${cat.required_foundation === 'entry' ? t('Εισαγωγικό Επίπεδο', 'Entry Level') : t('Βασικό Επίπεδο', 'Basic Level')}${cat.required_sport_level ? ` ${cat.required_sport_level}` : ''}`}
                         {cat.max_participants && ` · ${t('Μέγ.', 'Max')}: ${cat.max_participants}`}
                       </p>
                     </div>
