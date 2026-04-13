@@ -53,7 +53,7 @@ export default function EventsPage() {
         id, title_el, title_en, description_el, description_en,
         location, address, event_date, banner_url,
         contact_name, registration_deadline, max_participants,
-        team_event, status, created_by,
+        status, created_by,
         event_categories(id, title_el, title_en, sport_id, is_championship)
       `)
       .eq('status', 'approved')
@@ -267,12 +267,8 @@ export default function EventsPage() {
                         📍 {event.location}{event.address ? ` — ${event.address}` : ''}
                       </span>
                     )}
-                    {event.team_event && (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>
-                        🛡️ {t('Αγώνας Ομάδων', 'Team Event')}
-                      </span>
-                    )}
-                  </div>
+                    
+                </div>
 
                   {/* Categories pills */}
                   {categories.length > 0 && (

@@ -365,14 +365,7 @@ export default function EventDetailPage() {
           }}>
             {isCompleted ? t('✅ Ολοκληρώθηκε', '✅ Completed') : upcoming ? t('Επερχόμενος', 'Upcoming') : t('Παρελθόν', 'Past')}
           </span>
-          {event.team_event && (
-            <span style={{
-              fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.7rem', borderRadius: '99px',
-              background: 'rgba(212,175,55,0.1)', color: 'var(--accent)', border: '1px solid var(--accent)',
-            }}>
-              🛡️ {t('Αγώνας Ομάδων', 'Team Event')}
-            </span>
-          )}
+          
         </div>
 
         <h1 style={{
