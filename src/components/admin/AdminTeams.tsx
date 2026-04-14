@@ -17,7 +17,7 @@ export default function AdminTeams() {
     setLoading(true)
     const { data } = await supabase
       .from('teams')
-      .select('*, profiles!teams_leader_id_fkey(full_name, member_id)')
+      .select('*, profiles!teams_created_by_fkey(full_name, member_id)')
       .order('created_at', { ascending: false })
     setTeams(data || [])
     setLoading(false)
@@ -69,7 +69,7 @@ export default function AdminTeams() {
                 <div onClick={() => expandTeam(team.id)} style={{ cursor: 'pointer', flex: 1 }}>
                   <p style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{team.name}</p>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                    Leader: {team.profiles?.full_name} #{team.profiles?.member_id}
+                    Created by: {team.profiles?.full_name} #{team.profiles?.member_id}
                   </p>
                   {team.description && (
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>
