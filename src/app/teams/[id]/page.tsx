@@ -28,22 +28,19 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
   useEffect(() => { load() }, [teamId])
 
   async function load() {
-  setLoading(true)
+    setLoading(true)
 
-  const result = await supabase
-    .from('teams').select('*').eq('id', teamId).single()
+    const result = await supabase
+      .from('teams').select('*').eq('id', teamId).single()
 
- // console.log('teamData:', result.data)
-  //console.log('teamError:', result.error)
+    if (!result.data) { setLoading(false); return }
+    const teamData = result.data
+    setTeam(teamData)
 
-  if (!result.data) { setLoading(false); return }
-  const teamData = result.data
-  setTeam(teamData)
-
-  const { data: captainData } = await supabase
-    .from('profiles').select('id, full_name, avatar_url, member_id')
-    .eq('id', teamData.created_by).single()
-  setCaptain(captainData)
+    const { data: captainData } = await supabase
+      .from('profiles').select('id, full_name, avatar_url, member_id')
+      .eq('id', teamData.created_by).single()
+    setCaptain(captainData)
 
     // Get accepted members
     const { data: memberRows } = await supabase
@@ -60,12 +57,16 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
         .eq('owner_id', m.user_id)
         .eq('status', 'active')
 
-      // Points from rankings (sum over all owner's dogs)
-      const { data: rankRows } = await supabase
-        .from('dog_sport_ranking')
-        .select('total_points')
-        .eq('owner_id', m.user_id)
-      const ownerPoints = (rankRows || []).reduce((sum: number, r: any) => sum + Number(r.total_points || 0), 0)
+      // Points from dog_sport_ranking — keyed by dog_id not owner_id
+      const dogIds = (dogs || []).map((d: any) => d.id)
+      let ownerPoints = 0
+      if (dogIds.length > 0) {
+        const { data: rankRows } = await supabase
+          .from('dog_sport_ranking')
+          .select('total_points')
+          .in('dog_id', dogIds)
+        ownerPoints = (rankRows || []).reduce((sum: number, r: any) => sum + Number(r.total_points || 0), 0)
+      }
 
       return { ...m, dogs: dogs || [], ownerPoints }
     }))
@@ -110,7 +111,6 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
     } else {
       setUserHasPending(true)
       setJoinMsg(t('Το αίτημά σου στάλθηκε!', 'Request sent!'))
-      // Notify captain
       if (captain?.id) {
         const { data: senderProfile } = await supabase
           .from('profiles').select('full_name').eq('id', currentUserId).single()

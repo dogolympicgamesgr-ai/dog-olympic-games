@@ -1,10 +1,17 @@
 'use client'
+
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 
-export default function ProfileCircle({ profile, onUpload, readOnly = false }: {
-  profile: any, onUpload?: () => void, readOnly?: boolean
+export default function ProfileCircle({
+  profile,
+  onUpload,
+  readOnly = false,
+}: {
+  profile: any
+  onUpload?: () => void
+  readOnly?: boolean
 }) {
   const { t } = useLang()
   const [uploading, setUploading] = useState(false)
@@ -20,11 +27,19 @@ export default function ProfileCircle({ profile, onUpload, readOnly = false }: {
     try {
       const compressed = await compressImage(file, 400)
       const path = `${profile.id}/avatar.jpg`
-      await supabase.storage.from('avatars').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' })
+      await supabase.storage.from('avatars').upload(path, compressed, {
+        upsert: true,
+        contentType: 'image/jpeg',
+      })
       const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-      await supabase.from('profiles').update({ avatar_url: data.publicUrl + '?t=' + Date.now() }).eq('id', profile.id)
+      await supabase
+        .from('profiles')
+        .update({ avatar_url: data.publicUrl + '?t=' + Date.now() })
+        .eq('id', profile.id)
       onUpload?.()
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+    }
     setUploading(false)
   }
 
@@ -46,17 +61,30 @@ export default function ProfileCircle({ profile, onUpload, readOnly = false }: {
 
   return (
     <>
-      <div style={{ position: 'relative', width: '200px', height: '200px', flexShrink: 0, overflow: 'visible' }}>
+      {/* Outer wrapper — position relative so camera button anchors to it */}
+      <div style={{
+        position: 'relative',
+        width: '200px',
+        height: '200px',
+        flexShrink: 0,
+        zIndex: 3, // above role badges (zIndex 1)
+      }}>
+        {/* Avatar circle — click opens lightbox if avatar exists */}
         <div
           onClick={() => avatarUrl && setLightbox(true)}
           style={{
-            width: '200px', height: '200px', borderRadius: '50%',
+            width: '200px',
+            height: '200px',
+            borderRadius: '50%',
             border: '3px solid var(--accent)',
             background: 'var(--bg-card)',
             overflow: 'hidden',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             boxShadow: '0 0 30px rgba(232,185,79,0.15)',
             cursor: avatarUrl ? 'zoom-in' : 'default',
+            position: 'relative',
           }}
         >
           {avatarUrl
@@ -65,7 +93,8 @@ export default function ProfileCircle({ profile, onUpload, readOnly = false }: {
           }
           {uploading && (
             <div style={{
-              position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)',
+              position: 'absolute', inset: 0,
+              background: 'rgba(0,0,0,0.6)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 600,
               borderRadius: '50%',
@@ -75,30 +104,59 @@ export default function ProfileCircle({ profile, onUpload, readOnly = false }: {
           )}
         </div>
 
+        {/* Camera button — outside avatar div so it never gets clipped or blocked */}
         {!readOnly && (
           <button
-            onClick={e => { e.stopPropagation(); fileRef.current?.click() }}
+            onClick={() => fileRef.current?.click()}
             style={{
-              position: 'absolute', bottom: '10px', right: '10px',
-              background: 'var(--accent)', border: 'none', borderRadius: '50%',
-              width: '34px', height: '34px', cursor: 'pointer',
-              fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              position: 'absolute',
+              bottom: '10px',
+              right: '10px',
+              background: 'var(--accent)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '34px',
+              height: '34px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              zIndex: 4,
             }}
             title={t('Αλλαγή φωτογραφίας', 'Change photo')}
-          >📷</button>
+          >
+            📷
+          </button>
         )}
       </div>
 
-      {!readOnly && <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />}
+      {!readOnly && (
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      )}
 
       {lightbox && (
-        <div onClick={() => setLightbox(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 2000, cursor: 'zoom-out',
-        }}>
-          <img src={avatarUrl} alt="avatar" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }} />
+        <div
+          onClick={() => setLightbox(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2000, cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={avatarUrl}
+            alt="avatar"
+            style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }}
+          />
         </div>
       )}
     </>

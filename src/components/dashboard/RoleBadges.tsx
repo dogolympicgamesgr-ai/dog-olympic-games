@@ -24,8 +24,8 @@ export default function RoleBadges({ roles }: { roles: string[] }) {
 
   return (
     <>
-      {/* Desktop arc — pointerEvents none on wrapper so clicks pass through to ProfileCircle */}
-      <div className="role-badges-desktop" style={{ pointerEvents: 'none' }}>
+      {/* Desktop arc */}
+      <div className="role-badges-desktop">
         {filtered.map((role, i) => {
           const cfg = roleConfig[role]
           const angle = degToRad(angles[i])
@@ -46,10 +46,10 @@ export default function RoleBadges({ roles }: { roles: string[] }) {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '1px',
-              zIndex: 2,
+              zIndex: 1,
               boxShadow: `0 0 12px ${cfg.color}44`,
               flexShrink: 0,
-              pointerEvents: 'auto',
+              pointerEvents: 'none',
             }}>
               <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{cfg.icon}</span>
               <span style={{
