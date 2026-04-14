@@ -15,11 +15,13 @@ const aboutLinks = [
 ]
 
 const communityLinks = [
-  { href: '/events',   el: 'Αγώνες',    en: 'Events' },
-  { href: '/judges',   el: 'Κριτές',    en: 'Judges' },
-  { href: '/teams',    el: 'Ομάδες',    en: 'Teams' },
-  { href: '/seminars', el: 'Σεμινάρια', en: 'Seminars' },
-  { href: '/ranking',  el: 'Κατάταξη',  en: 'Ranking' },
+  { href: '/events',      el: 'Αγώνες',        en: 'Events' },
+  { href: '/judges',      el: 'Κριτές',        en: 'Judges' },
+  { href: '/organizers',  el: 'Διοργανωτές',   en: 'Organizers' },
+  { href: '/decoys',      el: 'Decoys',         en: 'Decoys' },
+  { href: '/teams',       el: 'Ομάδες',        en: 'Teams' },
+  { href: '/seminars',    el: 'Σεμινάρια',     en: 'Seminars' },
+  { href: '/ranking',     el: 'Κατάταξη',      en: 'Ranking' },
 ]
 
 export default function Navbar() {
@@ -39,7 +41,6 @@ export default function Navbar() {
   const aboutRef = useRef<HTMLDivElement>(null)
   const communityRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdowns on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (aboutRef.current && !aboutRef.current.contains(e.target as Node)) setAboutOpen(false)
@@ -49,13 +50,11 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Close drawer + refresh unread on route change
   useEffect(() => {
     setDrawerOpen(false)
     if (user) fetchUnreadCount(user.id)
   }, [pathname])
 
-  // Session + auth state
   useEffect(() => {
     async function init() {
       try {
@@ -76,11 +75,8 @@ export default function Navbar() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!session?.user) {
-        setUser(null)
-        setProfileName('')
-        setIsAdmin(false)
-        setRoles([])
-        setUnreadCount(0)
+        setUser(null); setProfileName(''); setIsAdmin(false)
+        setRoles([]); setUnreadCount(0)
       } else {
         try {
           const res = await fetch('/auth/session')
@@ -96,7 +92,6 @@ export default function Navbar() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Dashboard drawer compat
   useEffect(() => {
     function onDashboardDrawer() { setDrawerOpen(true) }
     window.addEventListener('open-dashboard-drawer', onDashboardDrawer)
@@ -156,38 +151,25 @@ export default function Navbar() {
   })
 
   const navBtnStyle = (active: boolean) => ({
-    background: 'none',
-    border: 'none',
-    padding: '0.4rem 0.75rem',
-    borderRadius: '6px',
+    background: 'none', border: 'none',
+    padding: '0.4rem 0.75rem', borderRadius: '6px',
     color: active ? 'var(--accent)' : 'var(--text-secondary)',
-    fontSize: '0.88rem',
-    fontWeight: 500,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.3rem',
-    fontFamily: 'Outfit, sans-serif',
-    letterSpacing: '0.02em',
+    fontSize: '0.88rem', fontWeight: 500, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: '0.3rem',
+    fontFamily: 'Outfit, sans-serif', letterSpacing: '0.02em',
   })
 
   const drawerLinkStyle = (active: boolean) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    padding: '0.75rem 1rem',
-    borderRadius: '10px',
+    display: 'flex', alignItems: 'center', gap: '0.75rem',
+    padding: '0.75rem 1rem', borderRadius: '10px',
     color: active ? 'var(--accent)' : 'var(--text-primary)',
-    textDecoration: 'none',
-    fontSize: '0.9rem',
+    textDecoration: 'none', fontSize: '0.9rem',
     fontWeight: active ? 600 : 400,
     background: active ? 'var(--bg)' : 'transparent',
     transition: 'background 0.15s',
-    border: 'none',
-    cursor: 'pointer',
+    border: 'none', cursor: 'pointer',
     fontFamily: 'Outfit, sans-serif',
-    width: '100%',
-    textAlign: 'left' as const,
+    width: '100%', textAlign: 'left' as const,
   })
 
   const sectionLabel = (label: string) => (
@@ -212,8 +194,7 @@ export default function Navbar() {
         zIndex: 1000,
         display: 'flex', alignItems: 'center',
         padding: '0 1.5rem',
-        justifyContent: 'space-between',
-        gap: '1rem',
+        justifyContent: 'space-between', gap: '1rem',
       }}>
 
         {/* LEFT — hamburger + logo */}
@@ -287,8 +268,7 @@ export default function Navbar() {
               alignItems: 'center', justifyContent: 'center',
               background: 'var(--bg-card)', border: '1px solid var(--border)',
               borderRadius: '6px', padding: '0.3rem 0.6rem',
-              color: 'var(--text-secondary)', textDecoration: 'none',
-              fontSize: '1rem',
+              color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '1rem',
             }}>
               🔔
               {unreadCount > 0 && (
@@ -332,8 +312,7 @@ export default function Navbar() {
           }}>
             {/* Drawer header */}
             <div style={{
-              padding: '1.25rem 1.5rem',
-              borderBottom: '1px solid var(--border)',
+              padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               flexShrink: 0,
             }}>
@@ -398,24 +377,21 @@ export default function Navbar() {
                     </Link>
                   )}
 
-                  {/* Role placeholders */}
+                  {/* Role panels — now live links */}
                   {roles.includes('judge') && (
-                    <button style={{ ...drawerLinkStyle(false), opacity: 0.5, cursor: 'not-allowed' }} disabled>
+                    <Link href="/judge-panel" style={drawerLinkStyle(pathname === '/judge-panel')}>
                       ⚖️ {t('Πίνακας Κριτή', 'Judge Panel')}
-                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>soon</span>
-                    </button>
+                    </Link>
                   )}
                   {roles.includes('organizer') && (
-                    <button style={{ ...drawerLinkStyle(false), opacity: 0.5, cursor: 'not-allowed' }} disabled>
+                    <Link href="/organizer-panel" style={drawerLinkStyle(pathname === '/organizer-panel')}>
                       📋 {t('Πίνακας Διοργανωτή', 'Organizer Panel')}
-                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>soon</span>
-                    </button>
+                    </Link>
                   )}
                   {roles.includes('decoy') && (
-                    <button style={{ ...drawerLinkStyle(false), opacity: 0.5, cursor: 'not-allowed' }} disabled>
+                    <Link href="/decoy-panel" style={drawerLinkStyle(pathname === '/decoy-panel')}>
                       🎯 {t('Πίνακας Decoy', 'Decoy Panel')}
-                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>soon</span>
-                    </button>
+                    </Link>
                   )}
 
                   {/* My Profile collapsible */}

@@ -31,6 +31,7 @@ interface CategoryResult {
   titleEn: string
   sportName: string
   sportId: string
+  isFoundation: boolean
   rows: ResultRow[]
 }
 
@@ -65,7 +66,6 @@ export default function ResultsPage() {
     setEvent(eventRes.data)
     setSession(sessionRes)
 
-    // Load all competition_results for this event
     const { data: results } = await supabase
       .from('competition_results')
       .select(`
@@ -74,7 +74,7 @@ export default function ResultsPage() {
         profiles!competition_results_owner_id_fkey(id, full_name, member_id),
         event_categories!competition_results_category_id_fkey(
           id, title_el, title_en,
-          sports(id, name_el, name_en)
+          sports(id, name_el, name_en, is_foundation)
         )
       `)
       .eq('event_id', eventId)
@@ -84,11 +84,9 @@ export default function ResultsPage() {
       return
     }
 
-    // Check if already approved
     const allApproved = results.every((r: any) => r.status === 'approved')
     setAlreadyApproved(allApproved)
 
-    // Load foundation rankings for all dogs
     const dogIds = [...new Set(results.map((r: any) => r.dog_id))]
     const { data: rankings } = await supabase
       .from('foundation_ranking')
@@ -98,12 +96,13 @@ export default function ResultsPage() {
     const rankMap: Record<string, any> = {}
     ;(rankings || []).forEach((r: any) => { rankMap[r.dog_id] = r })
 
-    // Group by category
     const catMap: Record<string, CategoryResult> = {}
 
     for (const r of results) {
       const cat = r.event_categories as any
       if (!cat) continue
+
+      const isFoundation = cat.sports?.is_foundation ?? true
 
       if (!catMap[cat.id]) {
         catMap[cat.id] = {
@@ -112,6 +111,7 @@ export default function ResultsPage() {
           titleEn: cat.title_en,
           sportName: t(cat.sports?.name_el, cat.sports?.name_en || cat.sports?.name_el),
           sportId: cat.sports?.id,
+          isFoundation,
           rows: [],
         }
       }
@@ -121,20 +121,16 @@ export default function ResultsPage() {
         basic_participations: 0, basic_title: false,
       }
 
-      // Determine if this pass will trigger a title
-      // Only relevant if passed = true
       let willGetTitle = false
       let nextLevel = ''
 
-      if (r.passed) {
+      if (r.passed && isFoundation) {
         if (!rank.entry_title) {
-          // Still working on entry level
           if (rank.entry_participations + 1 >= 2) {
             willGetTitle = true
             nextLevel = t('Εισαγωγικό Επίπεδο', 'Entry Level')
           }
         } else if (!rank.basic_title) {
-          // Working on basic level
           if (rank.basic_participations + 1 >= 2) {
             willGetTitle = true
             nextLevel = t('Βασικό Επίπεδο', 'Basic Level')
@@ -174,9 +170,8 @@ export default function ResultsPage() {
         ...cat,
         rows: cat.rows.map((row, ri) => {
           if (ri !== rowIndex) return row
-          // Recalculate willGetTitle if passed changes
           let updated = { ...row, [field]: value }
-          if (field === 'passed') {
+          if (field === 'passed' && cat.isFoundation) {
             const rank = {
               entry_title: row.entryTitle,
               entry_participations: row.entryParticipations,
@@ -204,7 +199,6 @@ export default function ResultsPage() {
     setApproving(true)
     setApproveMsg(null)
 
-    // Validate all rows have score + pass/fail
     for (const cat of categories) {
       for (const row of cat.rows) {
         if (row.score === '' || row.passed === null) {
@@ -231,31 +225,31 @@ export default function ResultsPage() {
         }
       }
 
-      // 2. Update foundation_ranking + dog_sport_ranking per dog
+      // 2. Update rankings — branch on foundation vs discipline
       for (const cat of categories) {
         for (const row of cat.rows) {
-          if (!row.passed) continue // only update on pass
+          if (!row.passed) continue
 
-          // Check if foundation_ranking exists for this dog
-          const { data: existing } = await supabase
-            .from('foundation_ranking')
-            .select('id, entry_participations, entry_title, basic_participations, basic_title')
-            .eq('dog_id', row.dogId)
-            .maybeSingle()
+          const scoreVal = parseFloat(row.score)
 
-          if (!existing) {
-            // Create new ranking record
-            await supabase.from('foundation_ranking').insert({
-              dog_id: row.dogId,
-              owner_id: row.ownerId,
-              entry_participations: 1,
-              entry_title: false,
-              basic_participations: 0,
-              basic_title: false,
-            })
-          } else {
-            // Determine which level to increment
-            if (!existing.entry_title) {
+          if (cat.isFoundation) {
+            // ── FOUNDATION SPORT: update foundation_ranking ──
+            const { data: existing } = await supabase
+              .from('foundation_ranking')
+              .select('id, entry_participations, entry_title, basic_participations, basic_title')
+              .eq('dog_id', row.dogId)
+              .maybeSingle()
+
+            if (!existing) {
+              await supabase.from('foundation_ranking').insert({
+                dog_id: row.dogId,
+                owner_id: row.ownerId,
+                entry_participations: 1,
+                entry_title: false,
+                basic_participations: 0,
+                basic_title: false,
+              })
+            } else if (!existing.entry_title) {
               const newCount = existing.entry_participations + 1
               const getsTitle = newCount >= 2
               await supabase
@@ -277,49 +271,49 @@ export default function ResultsPage() {
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', existing.id)
+            }
+            // if both foundation titles already exist, nothing to update in foundation_ranking
+
+          } else {
+            // ── DISCIPLINE SPORT: update dog_sport_ranking directly ──
+            const { data: sportRank } = await supabase
+              .from('dog_sport_ranking')
+              .select('id, participations, current_sublevel, title, total_points')
+              .eq('dog_id', row.dogId)
+              .eq('sport_id', cat.sportId)
+              .maybeSingle()
+
+            if (!sportRank) {
+              await supabase.from('dog_sport_ranking').insert({
+                dog_id: row.dogId,
+                owner_id: row.ownerId,
+                sport_id: cat.sportId,
+                participations: 1,
+                current_sublevel: 1,
+                title: false,
+                total_points: scoreVal,
+                updated_at: new Date().toISOString(),
+              })
             } else {
-              // Has both foundation titles — update dog_sport_ranking
-              const { data: sportRank } = await supabase
+              const newParticipations = sportRank.participations + 1
+              const newPoints = sportRank.total_points + scoreVal
+              const getsSubLevelUp = newParticipations >= 2 && sportRank.current_sublevel < 3
+              await supabase
                 .from('dog_sport_ranking')
-                .select('id, participations, current_sublevel, title, total_points')
-                .eq('dog_id', row.dogId)
-                .eq('sport_id', cat.sportId)
-                .maybeSingle()
-
-              const scoreVal = parseFloat(row.score)
-
-              if (!sportRank) {
-                await supabase.from('dog_sport_ranking').insert({
-                  dog_id: row.dogId,
-                  owner_id: row.ownerId,
-                  sport_id: cat.sportId,
-                  participations: 1,
-                  current_sublevel: 0,
-                  title: false,
-                  total_points: scoreVal,
+                .update({
+                  participations: getsSubLevelUp ? 0 : newParticipations,
+                  current_sublevel: getsSubLevelUp ? sportRank.current_sublevel + 1 : sportRank.current_sublevel,
+                  title: getsSubLevelUp && sportRank.current_sublevel + 1 >= 3,
+                  total_points: newPoints,
                   updated_at: new Date().toISOString(),
                 })
-              } else {
-                const newParticipations = sportRank.participations + 1
-                const newPoints = sportRank.total_points + scoreVal
-                const getsSubLevelUp = newParticipations >= 2 && sportRank.current_sublevel < 3
-                await supabase
-                  .from('dog_sport_ranking')
-                  .update({
-                    participations: getsSubLevelUp ? 0 : newParticipations,
-                    current_sublevel: getsSubLevelUp ? sportRank.current_sublevel + 1 : sportRank.current_sublevel,
-                    title: getsSubLevelUp && sportRank.current_sublevel + 1 >= 3,
-                    total_points: newPoints,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', sportRank.id)
-              }
+                .eq('id', sportRank.id)
             }
           }
         }
       }
 
-      // 3. Notify owners about their results
+      // 3. Notify owners
       for (const cat of categories) {
         for (const row of cat.rows) {
           await supabase.from('notifications').insert({
@@ -338,6 +332,7 @@ export default function ResultsPage() {
       setApproveMsg({ type: 'success', text: t('Όλα τα αποτελέσματα εγκρίθηκαν και οι κατατάξεις ενημερώθηκαν!', 'All results approved and rankings updated!') })
 
     } catch (err) {
+      console.error(err)
       setApproveMsg({ type: 'error', text: t('Σφάλμα κατά την έγκριση', 'Error during approval') })
     }
 
@@ -391,7 +386,6 @@ export default function ResultsPage() {
           {t(event?.title_el, event?.title_en || event?.title_el)}
         </p>
 
-        {/* Summary bar */}
         {totalDogs > 0 && (
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
@@ -419,7 +413,6 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {/* No results yet */}
         {categories.length === 0 && (
           <div style={cardStyle}>
             <p style={{ color: 'var(--text-secondary)', textAlign: 'center', margin: 0, fontSize: '0.9rem' }}>
@@ -428,13 +421,13 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {/* Results per category */}
         {categories.map((cat, catIndex) => (
           <div key={cat.categoryId} style={cardStyle}>
             <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.1rem', color: 'var(--accent)', margin: '0 0 1rem', letterSpacing: '0.04em' }}>
               {t(cat.titleEl, cat.titleEn || cat.titleEl)}
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'Outfit, sans-serif', marginLeft: '0.5rem', fontWeight: 400, letterSpacing: 0 }}>
                 · {cat.sportName}
+                {!cat.isFoundation && <span style={{ color: '#7eb8f7', marginLeft: '0.35rem' }}>· Discipline</span>}
               </span>
             </p>
 
@@ -445,7 +438,6 @@ export default function ResultsPage() {
                   border: `1px solid ${row.willGetTitle ? 'rgba(212,175,55,0.4)' : row.passed === true ? '#7ef7a033' : row.passed === false ? '#f77e7e33' : 'var(--border)'}`,
                   borderRadius: '10px', padding: '0.85rem 1rem',
                 }}>
-                  {/* Dog + owner info */}
                   <div style={{ marginBottom: '0.65rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.35rem' }}>
                       <div>
@@ -457,7 +449,6 @@ export default function ResultsPage() {
                           👤 {row.ownerName} (#{row.ownerMemberId})
                         </p>
                       </div>
-                      {/* Title alert badge */}
                       {row.willGetTitle && (
                         <span style={{
                           fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.65rem',
@@ -469,18 +460,22 @@ export default function ResultsPage() {
                         </span>
                       )}
                     </div>
-                    {/* Foundation level context */}
                     <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                      {t('Επίπεδο κατά τον αγώνα', 'Level at time')}:{' '}
-                      <span style={{ color: row.levelAtTime === 'basic' ? 'var(--accent)' : row.levelAtTime === 'entry' ? '#a0a0ff' : 'var(--text-secondary)' }}>
-                        {row.levelAtTime === 'basic' ? t('Βασικό', 'Basic') : row.levelAtTime === 'entry' ? t('Εισαγωγικό', 'Entry') : t('Κανένας', 'None')}
-                      </span>
-                      {' · '}{t('Συμμετοχές', 'Participations')}:{' '}
-                      {!row.entryTitle ? `${row.entryParticipations}/2 Entry` : !row.basicTitle ? `${row.basicParticipations}/2 Basic` : t('Ολοκλήρωσε θεμέλια', 'Foundation complete')}
+                      {cat.isFoundation ? (
+                        <>
+                          {t('Επίπεδο κατά τον αγώνα', 'Level at time')}:{' '}
+                          <span style={{ color: row.levelAtTime === 'basic' ? 'var(--accent)' : row.levelAtTime === 'entry' ? '#a0a0ff' : 'var(--text-secondary)' }}>
+                            {row.levelAtTime === 'basic' ? t('Βασικό', 'Basic') : row.levelAtTime === 'entry' ? t('Εισαγωγικό', 'Entry') : t('Κανένας', 'None')}
+                          </span>
+                          {' · '}{t('Συμμετοχές', 'Participations')}:{' '}
+                          {!row.entryTitle ? `${row.entryParticipations}/2 Entry` : !row.basicTitle ? `${row.basicParticipations}/2 Basic` : t('Ολοκλήρωσε θεμέλια', 'Foundation complete')}
+                        </>
+                      ) : (
+                        <span style={{ color: '#7eb8f7' }}>{t('Αγώνισμα πειθαρχίας', 'Discipline sport')} · {t('Πόντοι στη βαθμολογία', 'Points to ranking')}</span>
+                      )}
                     </p>
                   </div>
 
-                  {/* Score + Pass/Fail — editable unless approved */}
                   <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '110px' }}>
                       <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>
@@ -512,9 +507,7 @@ export default function ResultsPage() {
                             cursor: alreadyApproved ? 'not-allowed' : 'pointer',
                             fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', fontWeight: 700,
                             transition: 'all 0.15s', opacity: alreadyApproved ? 0.6 : 1,
-                          }}>
-                          ✓ Pass
-                        </button>
+                          }}>✓ Pass</button>
                         <button
                           disabled={alreadyApproved}
                           onClick={() => updateRow(catIndex, rowIndex, 'passed', false)}
@@ -526,14 +519,11 @@ export default function ResultsPage() {
                             cursor: alreadyApproved ? 'not-allowed' : 'pointer',
                             fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', fontWeight: 700,
                             transition: 'all 0.15s', opacity: alreadyApproved ? 0.6 : 1,
-                          }}>
-                          ✗ Fail
-                        </button>
+                          }}>✗ Fail</button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Approved badge */}
                   {row.status === 'approved' && (
                     <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: '#7ef7a0', fontWeight: 600 }}>
                       ✓ {t('Εγκρίθηκε', 'Approved')}
@@ -545,7 +535,6 @@ export default function ResultsPage() {
           </div>
         ))}
 
-        {/* Approve message */}
         {approveMsg && (
           <div style={{
             background: approveMsg.type === 'success' ? 'rgba(0,200,100,0.1)' : 'rgba(220,50,50,0.1)',
@@ -558,7 +547,6 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {/* Approve all button */}
         {categories.length > 0 && !alreadyApproved && (
           <button
             onClick={handleApproveAll}

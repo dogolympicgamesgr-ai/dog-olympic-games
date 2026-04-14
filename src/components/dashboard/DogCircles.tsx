@@ -5,7 +5,6 @@ import Link from 'next/link'
 
 const ARC_RADIUS = 148
 function degToRad(deg: number) { return (deg * Math.PI) / 180 }
-
 function getAngles(count: number): number[] {
   if (count === 1) return [0]
   if (count === 2) return [330, 30]
@@ -19,8 +18,7 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
 
   if (shown.length === 0) return (
     <>
-      {/* Desktop */}
-      <div className="dog-circles-desktop" style={{ position: 'absolute', inset: 0 }}>
+      <div className="dog-circles-desktop" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         <div style={{
           position: 'absolute',
           left: `calc(50% + ${ARC_RADIUS * Math.cos(degToRad(0))}px - 32px)`,
@@ -31,7 +29,6 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
           fontSize: '1.5rem', opacity: 0.4, background: 'var(--bg-card)',
         }}>🐕</div>
       </div>
-      {/* Mobile */}
       <div className="dog-circles-mobile">
         <div style={{
           width: '56px', height: '56px', borderRadius: '50%',
@@ -51,8 +48,8 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
 
   return (
     <>
-      {/* Desktop arc */}
-      <div className="dog-circles-desktop" style={{ position: 'absolute', inset: 0 }}>
+      {/* Desktop arc — pointerEvents none on wrapper, auto on each circle */}
+      <div className="dog-circles-desktop" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         {shown.map((dog, i) => {
           const angle = degToRad(angles[i])
           const x = ARC_RADIUS * Math.cos(angle)
@@ -64,15 +61,15 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
               top: `calc(50% + ${y}px - 32px)`,
               display: 'flex', flexDirection: 'column', alignItems: 'center',
               zIndex: 2,
+              pointerEvents: 'auto',
             }}>
               <Link href={`/dogs/${dog.id}`} style={{ textDecoration: 'none' }}>
                 <div
                   onClick={e => { if (dog.photo_url) { e.preventDefault(); setLightbox(dog.photo_url) } }}
                   style={{
                     width: '64px', height: '64px', borderRadius: '50%',
-                    border: '2px solid var(--accent)',
-                    background: 'var(--bg-card)', overflow: 'hidden',
-                    cursor: 'pointer',
+                    border: '2px solid var(--accent)', background: 'var(--bg-card)',
+                    overflow: 'hidden', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     boxShadow: '0 0 12px rgba(232,185,79,0.2)',
                   }}
@@ -84,9 +81,8 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
                 </div>
               </Link>
               <p style={{
-                fontSize: '0.58rem', color: 'var(--text-secondary)',
-                marginTop: '0.2rem', maxWidth: '64px',
-                textAlign: 'center', overflow: 'hidden',
+                fontSize: '0.58rem', color: 'var(--text-secondary)', marginTop: '0.2rem',
+                maxWidth: '64px', textAlign: 'center', overflow: 'hidden',
                 textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{dog.name}</p>
             </div>
@@ -103,9 +99,8 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
                 onClick={e => { if (dog.photo_url) { e.preventDefault(); setLightbox(dog.photo_url) } }}
                 style={{
                   width: '56px', height: '56px', borderRadius: '50%',
-                  border: '2px solid var(--accent)',
-                  background: 'var(--bg-card)', overflow: 'hidden',
-                  cursor: 'pointer', margin: '0 auto',
+                  border: '2px solid var(--accent)', background: 'var(--bg-card)',
+                  overflow: 'hidden', cursor: 'pointer', margin: '0 auto',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
@@ -116,9 +111,8 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
               </div>
             </Link>
             <p style={{
-              fontSize: '0.62rem', color: 'var(--text-secondary)',
-              marginTop: '0.2rem', maxWidth: '56px',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: '0.2rem',
+              maxWidth: '56px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{dog.name}</p>
           </div>
         ))}
@@ -141,10 +135,10 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
 
 const dogCirclesStyle = `
   .dog-circles-desktop { display: block; }
-  .dog-circles-mobile { display: none; }
+  .dog-circles-mobile  { display: none; }
   @media (max-width: 600px) {
     .dog-circles-desktop { display: none !important; }
-    .dog-circles-mobile {
+    .dog-circles-mobile  {
       display: flex !important;
       flex-direction: row;
       gap: 0.75rem;

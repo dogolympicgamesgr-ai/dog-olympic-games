@@ -39,6 +39,28 @@ export default function AdminEvents() {
 
   async function updateStatus(id: string, status: string) {
     await supabase.from('events').update({ status }).eq('id', id)
+
+    // Notify organizer on approve or reject
+    if (status === 'approved' || status === 'cancelled') {
+      const event = events.find(e => e.id === id)
+      if (event?.created_by) {
+        const isApproved = status === 'approved'
+        await supabase.from('notifications').insert({
+          user_id: event.created_by,
+          type: isApproved ? 'event_approved' : 'event_rejected',
+          title_el: isApproved ? 'Ο Αγώνας Εγκρίθηκε' : 'Ο Αγώνας Απορρίφθηκε',
+          title_en: isApproved ? 'Event Approved' : 'Event Rejected',
+          message_el: isApproved
+            ? `Ο αγώνας "${event.title_el}" εγκρίθηκε και είναι πλέον δημόσιος.`
+            : `Ο αγώνας "${event.title_el}" απορρίφθηκε από τον διαχειριστή.`,
+          message_en: isApproved
+            ? `Your event "${event.title_el}" has been approved and is now public.`
+            : `Your event "${event.title_el}" was rejected by the admin.`,
+          metadata: { event_id: id },
+        })
+      }
+    }
+
     if (status === 'approved' || filter === 'pending') loadPendingCount()
     loadEvents()
   }
@@ -74,20 +96,13 @@ export default function AdminEvents() {
 
   return (
     <div>
-      {/* Pending attention notice */}
       {pendingCount > 0 && filter !== 'pending' && (
         <div
           onClick={() => setFilter('pending')}
           style={{
-            background: 'var(--accent)22',
-            border: '1px solid var(--accent)',
-            borderRadius: '8px',
-            padding: '0.65rem 1rem',
-            marginBottom: '1rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
+            background: 'var(--accent)22', border: '1px solid var(--accent)',
+            borderRadius: '8px', padding: '0.65rem 1rem', marginBottom: '1rem',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}
         >
           <span>🔔</span>
@@ -107,13 +122,9 @@ export default function AdminEvents() {
                 marginLeft: '0.4rem',
                 background: filter === 'pending' ? 'var(--bg)' : 'var(--accent)',
                 color: filter === 'pending' ? 'var(--accent)' : 'var(--bg)',
-                borderRadius: '20px',
-                padding: '0 0.4rem',
-                fontSize: '0.7rem',
-                fontWeight: 700,
-              }}>
-                {pendingCount}
-              </span>
+                borderRadius: '20px', padding: '0 0.4rem',
+                fontSize: '0.7rem', fontWeight: 700,
+              }}>{pendingCount}</span>
             )}
           </button>
         ))}
@@ -128,21 +139,12 @@ export default function AdminEvents() {
           )}
           {events.map(event => (
             <div key={event.id} style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-              padding: '1rem 1.25rem',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              gap: '1rem',
-              flexWrap: 'wrap',
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: '10px', padding: '1rem 1.25rem',
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap',
             }}>
-              {/* Clickable info area */}
-              <div
-                onClick={() => router.push(`/events/${event.id}`)}
-                style={{ flex: 1, cursor: 'pointer' }}
-              >
+              <div onClick={() => router.push(`/events/${event.id}`)} style={{ flex: 1, cursor: 'pointer' }}>
                 <p style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: '0.2rem' }}>
                   {event.title_el} <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>→</span>
                 </p>
@@ -153,8 +155,6 @@ export default function AdminEvents() {
                   By: {event.profiles?.full_name || 'Admin'} #{event.profiles?.member_id}
                 </p>
               </div>
-
-              {/* Action buttons */}
               <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
                 {event.status === 'pending' && <>
                   <button onClick={() => updateStatus(event.id, 'approved')} style={{ background: '#7ef7a033', border: '1px solid #7ef7a0', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#7ef7a0', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>Approve</button>

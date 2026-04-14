@@ -252,9 +252,29 @@ export default function CreateEventPage() {
       return
     }
 
-    setSuccess(true)
-    setSubmitting(false)
-    setTimeout(() => router.push('/events'), 1500)
+   // Notify all admins
+const { data: admins } = await supabase
+  .from('user_roles')
+  .select('user_id')
+  .eq('role', 'admin')
+
+if (admins && admins.length > 0) {
+  await supabase.from('notifications').insert(
+    admins.map((a: any) => ({
+      user_id: a.user_id,
+      type: 'event_pending',
+      title_el: 'Νέος Αγώνας προς Έγκριση',
+      title_en: 'New Event Pending Approval',
+      message_el: `Ο αγώνας "${titleEl}" υποβλήθηκε και περιμένει έγκριση.`,
+      message_en: `Event "${titleEl}" was submitted and is waiting for approval.`,
+      metadata: { event_id: eventData.id },
+    }))
+  )
+}
+
+setSuccess(true)
+setSubmitting(false)
+setTimeout(() => router.push('/events'), 1500)
   }
 
   if (authLoading) return (
@@ -394,6 +414,7 @@ export default function CreateEventPage() {
               <label style={labelStyle}>{t('Ώρα Αγώνα', 'Event Time')}</label>
               <input
                 type="time"
+                step="3600"
                 style={inputStyle}
                 value={eventTime}
                 onChange={e => setEventTime(e.target.value)}
@@ -417,6 +438,7 @@ export default function CreateEventPage() {
               <label style={labelStyle}>{t('Ώρα Προθεσμίας', 'Deadline Time')}</label>
               <input
                 type="time"
+                step="3600"
                 style={inputStyle}
                 value={regTime}
                 onChange={e => setRegTime(e.target.value)}
