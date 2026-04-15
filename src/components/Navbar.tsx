@@ -34,6 +34,8 @@ export default function Navbar() {
   const [aboutOpen, setAboutOpen] = useState(false)
   const [communityOpen, setCommunityOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [aboutDrawerOpen, setAboutDrawerOpen] = useState(false)
+  const [communityDrawerOpen, setCommunityDrawerOpen] = useState(false)
   const [myProfileOpen, setMyProfileOpen] = useState(false)
   const pathname = usePathname()
   const supabase = createClient()
@@ -328,21 +330,41 @@ export default function Navbar() {
             {/* Drawer body */}
             <div style={{ flex: 1, padding: '0.5rem 0.75rem', overflowY: 'auto' }}>
 
-              {/* About */}
-              {sectionLabel(t('Σχετικά', 'About'))}
-              {aboutLinks.map(link => (
-                <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
-                  {t(link.el, link.en)}
-                </Link>
-              ))}
+              {/* About — collapsible */}
+              <button
+                onClick={() => setAboutDrawerOpen(!aboutDrawerOpen)}
+                style={{ ...drawerLinkStyle(aboutActive), justifyContent: 'space-between' }}
+              >
+                <span>{t('Σχετικά', 'About')}</span>
+                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>{aboutDrawerOpen ? '▲' : '▼'}</span>
+              </button>
+              {aboutDrawerOpen && (
+                <div style={{ paddingLeft: '1rem', borderLeft: '2px solid var(--border)', marginLeft: '1rem', marginBottom: '0.25rem' }}>
+                  {aboutLinks.map(link => (
+                    <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
+                      {t(link.el, link.en)}
+                    </Link>
+                  ))}
+                </div>
+              )}
 
-              {/* Community */}
-              {sectionLabel(t('Κοινότητα', 'Community'))}
-              {communityLinks.map(link => (
-                <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
-                  {t(link.el, link.en)}
-                </Link>
-              ))}
+              {/* Community — collapsible */}
+              <button
+                onClick={() => setCommunityDrawerOpen(!communityDrawerOpen)}
+                style={{ ...drawerLinkStyle(communityActive), justifyContent: 'space-between' }}
+              >
+                <span>{t('Κοινότητα', 'Community')}</span>
+                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>{communityDrawerOpen ? '▲' : '▼'}</span>
+              </button>
+              {communityDrawerOpen && (
+                <div style={{ paddingLeft: '1rem', borderLeft: '2px solid var(--border)', marginLeft: '1rem', marginBottom: '0.25rem' }}>
+                  {communityLinks.map(link => (
+                    <Link key={link.href} href={link.href} style={drawerLinkStyle(pathname === link.href)}>
+                      {t(link.el, link.en)}
+                    </Link>
+                  ))}
+                </div>
+              )}
 
               {/* Account — logged in only */}
               {user && (
