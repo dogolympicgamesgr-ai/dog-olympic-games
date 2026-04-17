@@ -87,7 +87,7 @@ export default function EventDetailPage() {
 
       // Load all registrations for participants list
       const eventStatus = eventRes.data.status
-      if (eventStatus === 'approved' || eventStatus === 'completed') {
+      if (eventStatus === 'approved' || eventStatus === 'completed' || eventStatus === 'results_approved') {
         await loadAllRegistrations(eventId, eventRes.data.event_categories || [])
       }
     }
@@ -96,6 +96,7 @@ export default function EventDetailPage() {
     setLoading(false)
   }
 
+  // CHANGE: Added no_show_count to profiles query
   async function loadAllRegistrations(eventId: string, cats: any[]) {
     const catIds = cats.map((c: any) => c.id)
     if (catIds.length === 0) return
@@ -104,7 +105,7 @@ export default function EventDetailPage() {
       .select(`
         id, category_id, dog_id, owner_id, status, attendance_status,
         dogs!event_registrations_dog_id_fkey(id, name, dog_id),
-        profiles!event_registrations_owner_id_fkey(id, full_name, member_id)
+        profiles!event_registrations_owner_id_fkey(id, full_name, member_id, no_show_count)
       `)
       .in('category_id', catIds)
       .eq('status', 'confirmed')
@@ -267,10 +268,15 @@ export default function EventDetailPage() {
   const isLoggedIn = !!session?.user
   const isOrganizerOrAdmin = session?.isAdmin || session?.roles?.includes('organizer') || session?.user?.id === event.created_by
   const isMyEvent = session?.user?.id === event.created_by
-  const isCompleted = event.status === 'completed'
+  
+  // CHANGE 1: Add isLocked constant
+  const isCompleted = event.status === 'completed' || event.status === 'results_approved'
+  const isLocked = event.status === 'results_approved'
 
-  // Role-based action visibility
+  // CHANGE 2: Gate action buttons
   const canManageAttendance = (isMyEvent || session?.isAdmin) && event.status === 'approved'
+  const canManageAssignments = isOrganizerOrAdmin && !isLocked
+
   const myJudgeAssignments = assignments.filter(a =>
     a.user_id === session?.user?.id && a.role === 'judge' && a.status === 'accepted'
   )
@@ -355,17 +361,16 @@ export default function EventDetailPage() {
           padding: 0, position: 'relative', zIndex: 1
         }}>←</button>
 
-        {/* Status badges */}
+        {/* Status badges - CHANGE 3: Updated status badge */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
           <span style={{
             fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.7rem', borderRadius: '99px',
-            background: isCompleted ? 'rgba(120,120,255,0.15)' : upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg-card)',
-            color: isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--text-secondary)',
-            border: `1px solid ${isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--border)'}`,
+            background: isLocked ? 'rgba(212,175,55,0.15)' : isCompleted ? 'rgba(120,120,255,0.15)' : upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg-card)',
+            color: isLocked ? 'var(--accent)' : isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--text-secondary)',
+            border: `1px solid ${isLocked ? 'var(--accent)' : isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--border)'}`,
           }}>
-            {isCompleted ? t('✅ Ολοκληρώθηκε', '✅ Completed') : upcoming ? t('Επερχόμενος', 'Upcoming') : t('Παρελθόν', 'Past')}
+            {isLocked ? t('🔒 Αποτελέσματα Εγκρίθηκαν', '🔒 Results Approved') : isCompleted ? t('✅ Ολοκληρώθηκε', '✅ Completed') : upcoming ? t('Επερχόμενος', 'Upcoming') : t('Παρελθόν', 'Past')}
           </span>
-          
         </div>
 
         <h1 style={{
@@ -524,7 +529,8 @@ export default function EventDetailPage() {
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      {isOrganizerOrAdmin && (
+                      {/* CHANGE 4: Gate + Judge button with canManageAssignments */}
+                      {canManageAssignments && (
                         <button onClick={() => {
                           setInvitingRole(isInvitingJudgeHere ? null : { role: 'judge', categoryId: cat.id })
                           setSelectedInviteUser(''); setAssignMsg(null)
@@ -609,7 +615,8 @@ export default function EventDetailPage() {
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>
                               {a.profiles?.full_name}
                             </span>
-                            {isOrganizerOrAdmin && (
+                            {/* CHANGE 5: Gate remove assignment button */}
+                            {canManageAssignments && (
                               <>
                                 <span style={{ fontSize: '0.65rem', color: assignStatusColor(a.status) }}>
                                   {assignStatusLabel(a.status)}
@@ -687,7 +694,8 @@ export default function EventDetailPage() {
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <p style={{ ...sectionTitle, margin: 0 }}>🎯 {t('Δόλωμα', 'Decoys')}</p>
-            {isOrganizerOrAdmin && (
+            {/* CHANGE 6: Gate decoys invite button */}
+            {canManageAssignments && (
               <button onClick={() => { setInvitingRole(invitingRole?.role === 'decoy' ? null : { role: 'decoy', categoryId: null }); setSelectedInviteUser(''); setAssignMsg(null) }}
                 style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.35rem 0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem' }}>
                 + {t('Πρόσκληση', 'Invite')}
@@ -731,7 +739,8 @@ export default function EventDetailPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {isOrganizerOrAdmin && (
+                  {/* CHANGE 7: Gate decoy remove buttons */}
+                  {canManageAssignments && (
                     <>
                       <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '99px', color: assignStatusColor(a.status), background: `${assignStatusColor(a.status)}22`, border: `1px solid ${assignStatusColor(a.status)}` }}>
                         {assignStatusLabel(a.status)}
@@ -749,7 +758,7 @@ export default function EventDetailPage() {
         </div>
 
         {/* Participants List */}
-        {isLoggedIn && (event.status === 'approved' || event.status === 'completed') && (
+        {isLoggedIn && (event.status === 'approved' || event.status === 'completed' || event.status === 'results_approved') && (
           <div style={cardStyle}>
             <p style={sectionTitle}>👥 {t('Συμμετέχοντες', 'Participants')}</p>
             {allRegistrations.length === 0 ? (
@@ -777,9 +786,15 @@ export default function EventDetailPage() {
                               flexWrap: 'wrap', gap: '0.4rem',
                             }}>
                               <div>
-                                <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {/* CHANGE 8: Add no-show badge in participants list */}
+                                <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                   {r.profiles?.full_name}
-                                  <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.72rem' }}>{' '}(#{r.profiles?.member_id})</span>
+                                  <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.72rem' }}>(#{r.profiles?.member_id})</span>
+                                  {isOrganizerOrAdmin && r.profiles?.no_show_count > 0 && (
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '99px', background: 'rgba(247,126,126,0.15)', border: '1px solid #f77e7e44', color: '#f77e7e' }}>
+                                      ⚠️ {r.profiles.no_show_count} {t('απουσίες', 'no-shows')}
+                                    </span>
+                                  )}
                                 </p>
                                 <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>🐕 {r.dogs?.name} · {r.dogs?.dog_id}</p>
                               </div>

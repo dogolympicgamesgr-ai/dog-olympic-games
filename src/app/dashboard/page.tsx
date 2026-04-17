@@ -94,6 +94,28 @@ export default function DashboardPage() {
     <div style={{ minHeight: '90vh', padding: '2rem 1rem', maxWidth: '900px', margin: '0 auto' }}>
       <DashboardDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
+      {/* No-show warning banner */}
+      {profile?.no_show_count > 0 && (
+        <div style={{
+          background: 'rgba(247,126,126,0.1)',
+          border: '1px solid #f77e7e44',
+          borderRadius: '12px',
+          padding: '0.85rem 1.25rem',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}>
+          <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>
+          <p style={{ margin: 0, color: '#f77e7e', fontSize: '0.88rem', fontWeight: 600 }}>
+            {t(
+              `Έχεις ${profile.no_show_count} καταγεγραμμένη απουσία${profile.no_show_count > 1 ? 'ες' : ''} από αγώνες. Παρακαλούμε να ακυρώνεις έγκαιρα αν δεν μπορείς να παραστείς.`,
+              `You have ${profile.no_show_count} recorded no-show${profile.no_show_count > 1 ? 's' : ''} from events. Please cancel in advance if you cannot attend.`
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: '2rem', paddingTop: '1rem' }}>
         <h1 style={{

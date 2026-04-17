@@ -22,6 +22,8 @@ export default function PublicProfilePage() {
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+  // NEW: viewer session for conditional warning visibility
+  const [viewerSession, setViewerSession] = useState<any>(null)
 
   useEffect(() => {
     if (member_id) loadProfile(member_id as string)
@@ -42,11 +44,13 @@ export default function PublicProfilePage() {
       return
     }
 
-    const [rolesRes, teamRes, dogsRes, resultsRes] = await Promise.all([
+    // NEW: Add session fetch to Promise.all
+    const [rolesRes, teamRes, dogsRes, resultsRes, sessionRes] = await Promise.all([
       supabase.from('user_roles').select('role').eq('user_id', prof.id),
       supabase.from('team_members').select('*, teams(*)').eq('user_id', prof.id).eq('status', 'accepted').maybeSingle(),
       supabase.from('dogs').select('*').eq('owner_id', prof.id).eq('status', 'active'),
       supabase.from('competition_results').select('*, events(*), dogs(name)').eq('owner_id', prof.id).eq('status', 'approved').order('created_at', { ascending: false }),
+      fetch('/auth/session').then(r => r.json()),
     ])
 
     setProfile(prof)
@@ -56,6 +60,8 @@ export default function PublicProfilePage() {
     setTeam(teamRes.data?.teams || null)
     setDogs(dogsRes.data || [])
     setResults(resultsRes.data || [])
+    // NEW: Set viewer session
+    setViewerSession(sessionRes)
     setLoading(false)
   }
 
@@ -78,9 +84,37 @@ export default function PublicProfilePage() {
 
   const isTeamLeader = team && team.created_by === profile?.id
 
+  // NEW: Check if viewer can see no-show warning
+  const canSeeNoShowWarning = profile?.no_show_count > 0 && 
+    (viewerSession?.isAdmin || 
+     viewerSession?.roles?.includes('organizer') || 
+     viewerSession?.user?.id === profile?.id)
+
   return (
     <main style={{ minHeight: '90vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 1rem' }}>
+
+        {/* NEW: No-show warning banner — visible only to admin/organizer/owner */}
+        {canSeeNoShowWarning && (
+          <div style={{
+            background: 'rgba(247,126,126,0.1)',
+            border: '1px solid #f77e7e44',
+            borderRadius: '12px',
+            padding: '0.75rem 1.25rem',
+            margin: '0 0 1.5rem 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}>
+            <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>⚠️</span>
+            <p style={{ margin: 0, color: '#f77e7e', fontSize: '0.85rem', fontWeight: 600 }}>
+              {t(
+                `${profile.no_show_count} καταγεγραμμένη απουσία${profile.no_show_count > 1 ? 'ες' : ''} από αγώνες`,
+                `${profile.no_show_count} recorded no-show${profile.no_show_count > 1 ? 's' : ''} from events`
+              )}
+            </p>
+          </div>
+        )}
 
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>

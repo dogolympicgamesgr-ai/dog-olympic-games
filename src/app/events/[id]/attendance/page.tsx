@@ -100,19 +100,22 @@ export default function AttendancePage() {
         .eq('id', r.id)
     ))
 
-    // Fire no-show notifications silently
+    // CHANGE: Fire no-show notifications and increment no_show_count
     const noShowRegs = allRegistrations.filter(r => attendanceMap[r.id] === 'no_show')
     if (noShowRegs.length > 0) {
       await Promise.all(noShowRegs.map((r: any) =>
-        supabase.from('notifications').insert({
-          user_id: r.owner_id,
-          type: 'no_show',
-          title_el: 'Απουσία από Αγώνα',
-          title_en: 'Event No-Show',
-          message_el: `Καταγράφηκε απουσία σου από τον αγώνα "${event.title_el}" με τον/την ${r.dogs?.name}. Παρακαλούμε να ακυρώνεις έγκαιρα αν δεν μπορείς να παραστείς.`,
-          message_en: `You were marked absent from "${event.title_el}" with ${r.dogs?.name}. Please cancel in advance if you cannot attend.`,
-          metadata: { event_id: id, dog_id: r.dog_id },
-        })
+        Promise.all([
+          supabase.from('notifications').insert({
+            user_id: r.owner_id,
+            type: 'no_show',
+            title_el: 'Απουσία από Αγώνα',
+            title_en: 'Event No-Show',
+            message_el: `Καταγράφηκε απουσία σου από τον αγώνα "${event.title_el}" με τον/την ${r.dogs?.name}. Παρακαλούμε να ακυρώνεις έγκαιρα αν δεν μπορείς να παραστείς.`,
+            message_en: `You were marked absent from "${event.title_el}" with ${r.dogs?.name}. Please cancel in advance if you cannot attend.`,
+            metadata: { event_id: id, dog_id: r.dog_id },
+          }),
+          supabase.rpc('increment_no_show', { user_id_input: r.owner_id }),
+        ])
       ))
     }
 

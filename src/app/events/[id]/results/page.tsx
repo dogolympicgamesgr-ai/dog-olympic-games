@@ -328,6 +328,12 @@ export default function ResultsPage() {
         }
       }
 
+      // CHANGE 1: Lock the event
+      await supabase
+        .from('events')
+        .update({ status: 'results_approved' })
+        .eq('id', id)
+
       setAlreadyApproved(true)
       setApproveMsg({ type: 'success', text: t('Όλα τα αποτελέσματα εγκρίθηκαν και οι κατατάξεις ενημερώθηκαν!', 'All results approved and rankings updated!') })
 

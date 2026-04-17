@@ -10,9 +10,13 @@ import AdminSeminars from '@/components/admin/AdminSeminars'
 import AdminResults from '@/components/admin/AdminResults'
 import AdminTeams from '@/components/admin/AdminTeams'
 import AdminDogs from '@/components/admin/AdminDogs'
+// NEW: Import AdminAbsences
+import AdminAbsences from '@/components/admin/AdminAbsences'
 
-type Section = 'users' | 'roles' | 'events' | 'seminars' | 'results' | 'teams' | 'dogs'
+// UPDATED: Add 'absences' to Section type
+type Section = 'users' | 'roles' | 'events' | 'seminars' | 'results' | 'teams' | 'dogs' | 'absences'
 
+// UPDATED: Add absences to sections array
 const sections: { id: Section; icon: string; label: string }[] = [
   { id: 'users',    icon: '👥', label: 'Users' },
   { id: 'roles',    icon: '🎖️', label: 'Roles' },
@@ -21,6 +25,7 @@ const sections: { id: Section; icon: string; label: string }[] = [
   { id: 'results',  icon: '📊', label: 'Results' },
   { id: 'teams',    icon: '🛡️', label: 'Teams' },
   { id: 'dogs',     icon: '🐕', label: 'Dogs' },
+  { id: 'absences', icon: '⚠️', label: 'Absences' },
 ]
 
 export default function AdminPage() {
@@ -62,6 +67,7 @@ export default function AdminPage() {
     </div>
   )
 
+  // UPDATED: Add 'absences' case
   const renderSection = () => {
     switch (active) {
       case 'users':    return <AdminUsers />
@@ -71,6 +77,7 @@ export default function AdminPage() {
       case 'results':  return <AdminResults />
       case 'teams':    return <AdminTeams />
       case 'dogs':     return <AdminDogs />
+      case 'absences': return <AdminAbsences />
     }
   }
 
