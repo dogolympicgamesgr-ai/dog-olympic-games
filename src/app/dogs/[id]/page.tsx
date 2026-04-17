@@ -36,10 +36,11 @@ export default function DogProfilePage() {
   }, [id])
 
   async function loadDog(dogId: string) {
+    // CHANGE 1: Added event_categories to query
     const [dogRes, resultsRes, foundationRes, sportRes] = await Promise.all([
       supabase.from('dogs').select('*, breeds(name)').eq('id', dogId).single(),
       supabase.from('competition_results')
-        .select('*, events(id, title_el, title_en, event_date, location)')
+        .select('*, events(id, title_el, title_en, event_date, location), event_categories(title_el, title_en)')
         .eq('dog_id', dogId)
         .eq('status', 'approved')
         .order('created_at', { ascending: false }),
@@ -389,9 +390,12 @@ export default function DogProfilePage() {
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
             >
               <div>
+                {/* CHANGE 2 & 3: Removed arrow, added category */}
                 <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
                   {t(r.events?.title_el, r.events?.title_en || r.events?.title_el) || '—'}
-                  {r.events?.id && <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginLeft: '0.35rem' }}>→</span>}
+                </p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  {t(r.event_categories?.title_el, r.event_categories?.title_en || r.event_categories?.title_el) || '—'}
                 </p>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                   {r.events?.event_date ? new Date(r.events.event_date).toLocaleDateString('el-GR') : '—'}
@@ -401,9 +405,13 @@ export default function DogProfilePage() {
               <div style={{ textAlign: 'right' }}>
                 {r.placement && <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)' }}>#{r.placement}</p>}
                 {r.score != null && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.score} pts</p>}
+                {/* CHANGE 4: Added title earned badge */}
                 <p style={{ fontSize: '0.72rem', fontWeight: 600, color: r.passed ? '#7ef7a0' : '#f77e7e' }}>
                   {r.passed ? '✓ Pass' : '✗ Fail'}
                 </p>
+                {r.passed && r.title_earned && (
+                  <p style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600 }}>🏅 {t('Τίτλος', 'Title')}</p>
+                )}
               </div>
             </div>
           ))
