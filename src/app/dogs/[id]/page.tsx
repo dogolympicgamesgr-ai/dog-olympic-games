@@ -190,7 +190,7 @@ export default function DogProfilePage() {
 
         {/* Circle layout — desktop */}
         <div className="dog-circles-desktop" style={{
-          display: 'grid',
+         
           gridTemplateColumns: '120px 1fr 120px',
           alignItems: 'center',
           gap: '1rem',
@@ -556,8 +556,8 @@ export default function DogProfilePage() {
         )}
 
         <style>{`
-          .dog-circles-desktop { display: grid !important; }
-          .dog-circles-mobile  { display: none !important; }
+          .dog-circles-desktop { display: grid; }
+          .dog-circles-mobile  { display: none; }
           @media (max-width: 600px) {
             .dog-circles-desktop { display: none !important; }
             .dog-circles-mobile  { display: block !important; }
