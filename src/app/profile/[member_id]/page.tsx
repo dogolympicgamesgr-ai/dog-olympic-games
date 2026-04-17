@@ -131,7 +131,7 @@ export default function PublicProfilePage() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             height: '220px',
           }}>
-            <RoleBadges roles={roles} />
+            <RoleBadges roles={roles} member_id={profile.member_id} />
             <ProfileCircle profile={profile} readOnly />
             <DogCircles dogs={dogs} />
           </div>
@@ -145,7 +145,7 @@ export default function PublicProfilePage() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
             <TeamBadge team={team} isLeader={isTeamLeader} />
-            <RoleBadges roles={roles} />
+            <RoleBadges roles={roles} member_id={profile.member_id} />
             <DogCircles dogs={dogs} />
           </div>
         </div>
