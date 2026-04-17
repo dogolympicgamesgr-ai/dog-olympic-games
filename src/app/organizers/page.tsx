@@ -43,11 +43,10 @@ export default function OrganizersPage() {
     const result: RoleMember[] = await Promise.all(
       profiles.map(async (p) => {
         const { count } = await supabase
-          .from('event_assignments')
+          .from('events')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', p.id)
-          .eq('role', 'organizer')
-          .eq('status', 'accepted')
+          .eq('created_by', p.id)
+          .eq('status', 'completed')
         return {
           member_id: p.member_id,
           full_name: p.full_name,
