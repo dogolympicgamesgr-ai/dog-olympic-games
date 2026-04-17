@@ -227,7 +227,7 @@ export default function DogProfilePage() {
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '220px' }}>
 
             {/* Title orbit circles — pointerEvents none on wrapper */}
-            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            <div style={{ display: 'contents' }}>
               {titleCircles.map((circle, i) => {
                 const angle = degToRad(angles[i] ?? 0)
                 const x = ARC_RADIUS * Math.cos(angle)
