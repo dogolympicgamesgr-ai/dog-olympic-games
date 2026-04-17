@@ -38,9 +38,13 @@ export default function DogProfilePage() {
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(false)
 
-  useEffect(() => {
-    if (id) loadDog(id as string)
-  }, [id])
+ useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') router.push('/')
+  })
+  if (id) loadDog(id as string)
+  return () => subscription.unsubscribe()
+}, [id])
 
   async function loadDog(dogId: string) {
     const [dogRes, resultsRes, foundationRes, sportRes] = await Promise.all([
