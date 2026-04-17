@@ -4,24 +4,13 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
+import DogTitleCircles, { TitleCircle } from '@/components/dashboard/DogTitleCircles'
 
 const DISCIPLINE_ICONS: Record<string, string> = {
-  'Υπακοή': '🎯',
+  'Υπακοή':   '🎯',
   'Προστασία': '🛡️',
   'Ανίχνευση': '🔍',
   'Ευκινησία': '⚡',
-}
-
-const ARC_RADIUS = 148
-function degToRad(deg: number) { return (deg * Math.PI) / 180 }
-
-function getAngles(count: number): number[] {
-  if (count === 1) return [270]
-  if (count === 2) return [240, 300]
-  if (count === 3) return [210, 270, 330]
-  if (count === 4) return [210, 255, 305, 350]
-  if (count === 5) return [200, 240, 280, 320, 360]
-  return [180, 220, 260, 300, 340, 20]
 }
 
 export default function DogProfilePage() {
@@ -39,7 +28,11 @@ export default function DogProfilePage() {
   const [lightbox, setLightbox] = useState(false)
 
   useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') router.push('/')
+    })
     if (id) loadDog(id as string)
+    return () => subscription.unsubscribe()
   }, [id])
 
   async function loadDog(dogId: string) {
@@ -104,54 +97,39 @@ export default function DogProfilePage() {
   const isDeceased = dog.status === 'in_our_memories'
 
   // Build title circles
-  type TitleCircle = {
-    label: string
-    sublabel?: string
-    icon: string
-    color: string
-    earned: boolean
-    progress?: string // e.g. "1/2" for unearned disciplines
-  }
-
   const titleCircles: TitleCircle[] = []
 
-  // Foundation circles
   const entryEarned = foundationRank?.entry_title === true
   const basicEarned = foundationRank?.basic_title === true
-  const entryProgress = foundationRank ? `${foundationRank.entry_participations}/2` : '0/2'
-  const basicProgress = foundationRank ? `${foundationRank.basic_participations}/2` : '0/2'
 
   if (entryEarned) {
-    titleCircles.push({ label: t('Εισαγωγικό', 'Entry'), icon: '⭐', color: '#7eb8f7', earned: true })
+    titleCircles.push({ icon: '⭐', label: t('Εισαγωγικό', 'Entry'), color: '#7eb8f7', earned: true })
   } else if (foundationRank && foundationRank.entry_participations > 0) {
-    titleCircles.push({ label: t('Εισαγωγικό', 'Entry'), icon: '⭐', color: '#7eb8f7', earned: false, progress: entryProgress })
+    titleCircles.push({ icon: '⭐', label: t('Εισαγωγικό', 'Entry'), color: '#7eb8f7', earned: false, progress: `${foundationRank.entry_participations}/2` })
   }
 
   if (basicEarned) {
-    titleCircles.push({ label: t('Βασικό', 'Basic'), icon: '⭐⭐', color: '#7ef7a0', earned: true })
+    titleCircles.push({ icon: '⭐⭐', label: t('Βασικό', 'Basic'), color: '#7ef7a0', earned: true })
   } else if (entryEarned && foundationRank && foundationRank.basic_participations > 0) {
-    titleCircles.push({ label: t('Βασικό', 'Basic'), icon: '⭐⭐', color: '#7ef7a0', earned: false, progress: basicProgress })
+    titleCircles.push({ icon: '⭐⭐', label: t('Βασικό', 'Basic'), color: '#7ef7a0', earned: false, progress: `${foundationRank.basic_participations}/2` })
   }
 
-  // Discipline circles
   for (const sr of sportRanks) {
     if (sr.sports?.is_foundation) continue
+    const hasActivity = sr.participations > 0 || sr.total_points > 0 || sr.title
+    if (!hasActivity) continue
     const sportName = t(sr.sports?.name_el, sr.sports?.name_en) || sr.sports?.name_el || '?'
     const icon = DISCIPLINE_ICONS[sr.sports?.name_el] || '🏅'
-    const earned = sr.title === true || sr.participations > 0 || sr.total_points > 0
-    if (earned) {
-      titleCircles.push({
-        label: sportName,
-        sublabel: `Lvl ${sr.current_sublevel}`,
-        icon,
-        color: 'var(--accent)',
-        earned: sr.title === true,
-        progress: sr.title ? undefined : `${sr.participations}/2`,
-      })
-    }
+    titleCircles.push({
+      icon,
+      label: sportName,
+      sublabel: `Lvl ${sr.current_sublevel}`,
+      color: 'var(--accent)',
+      earned: sr.title === true,
+      progress: sr.title ? undefined : `${sr.participations}/2`,
+    })
   }
 
-  const angles = getAngles(titleCircles.length)
   const earnedCount = titleCircles.filter(c => c.earned).length
 
   return (
@@ -189,8 +167,7 @@ export default function DogProfilePage() {
         </div>
 
         {/* Circle layout — desktop */}
-        <div className="dog-circles-desktop" style={{
-         
+        <div className="circles-desktop" style={{
           gridTemplateColumns: '120px 1fr 120px',
           alignItems: 'center',
           gap: '1rem',
@@ -224,55 +201,16 @@ export default function DogProfilePage() {
           </div>
 
           {/* Center — dog photo + title orbit */}
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '220px' }}>
+          <div style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '220px',
+          }}>
+            <DogTitleCircles circles={titleCircles} />
 
-            {/* Title orbit circles — pointerEvents none on wrapper */}
-            <div style={{ display: 'contents' }}>
-              {titleCircles.map((circle, i) => {
-                const angle = degToRad(angles[i] ?? 0)
-                const x = ARC_RADIUS * Math.cos(angle)
-                const y = ARC_RADIUS * Math.sin(angle)
-                return (
-                  <div key={i} style={{
-                    position: 'absolute',
-                    left: `calc(50% + ${x}px - 32px)`,
-                    top: `calc(50% + ${y}px - 32px)`,
-                    width: '64px', height: '64px', borderRadius: '50%',
-                    background: 'var(--bg-card)',
-                    border: `2px solid ${circle.earned ? circle.color : 'var(--border)'}`,
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    gap: '1px', zIndex: 1,
-                    boxShadow: circle.earned ? `0 0 12px ${circle.color}44` : 'none',
-                    opacity: circle.earned ? 1 : 0.5,
-                    pointerEvents: 'auto',
-                  }}>
-                    <span style={{ fontSize: '1rem', lineHeight: 1 }}>{circle.icon}</span>
-                    <span style={{
-                      fontSize: '0.48rem', fontWeight: 600,
-                      color: circle.earned ? circle.color : 'var(--text-secondary)',
-                      textAlign: 'center', padding: '0 3px', lineHeight: 1.2,
-                      maxWidth: '60px', overflow: 'hidden',
-                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                    }}>
-                      {circle.label}
-                    </span>
-                    {circle.sublabel && (
-                      <span style={{ fontSize: '0.42rem', color: 'var(--text-secondary)', lineHeight: 1 }}>
-                        {circle.sublabel}
-                      </span>
-                    )}
-                    {!circle.earned && circle.progress && (
-                      <span style={{ fontSize: '0.42rem', color: 'var(--text-secondary)', lineHeight: 1 }}>
-                        {circle.progress}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Dog photo circle */}
+            {/* Dog photo */}
             <div
               onClick={() => dog.photo_url && setLightbox(true)}
               style={{
@@ -297,7 +235,8 @@ export default function DogProfilePage() {
         </div>
 
         {/* Mobile layout */}
-        <div className="dog-circles-mobile" style={{ marginBottom: '2rem' }}>
+        <div className="circles-mobile" style={{ marginBottom: '2rem' }}>
+          {/* Dog photo */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
             <div
               onClick={() => dog.photo_url && setLightbox(true)}
@@ -322,7 +261,11 @@ export default function DogProfilePage() {
               onClick={() => router.push(`/profile/${owner.member_id}`)}
               style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', cursor: 'pointer' }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-card)', borderRadius: '99px', padding: '0.35rem 0.85rem', border: '1px solid var(--border)' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                background: 'var(--bg-card)', borderRadius: '99px',
+                padding: '0.35rem 0.85rem', border: '1px solid var(--border)',
+              }}>
                 {owner.avatar_url
                   ? <img src={owner.avatar_url} style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }} />
                   : <span>🐾</span>
@@ -334,34 +277,13 @@ export default function DogProfilePage() {
           )}
 
           {/* Title circles on mobile */}
-          {titleCircles.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center' }}>
-              {titleCircles.map((circle, i) => (
-                <div key={i} style={{
-                  width: '56px', height: '56px', borderRadius: '50%',
-                  background: 'var(--bg-card)',
-                  border: `2px solid ${circle.earned ? circle.color : 'var(--border)'}`,
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center',
-                  gap: '1px', opacity: circle.earned ? 1 : 0.5,
-                  boxShadow: circle.earned ? `0 0 10px ${circle.color}44` : 'none',
-                }}>
-                  <span style={{ fontSize: '0.9rem' }}>{circle.icon}</span>
-                  <span style={{ fontSize: '0.42rem', color: circle.earned ? circle.color : 'var(--text-secondary)', textAlign: 'center', padding: '0 2px' }}>
-                    {circle.label}
-                  </span>
-                  {circle.sublabel && <span style={{ fontSize: '0.38rem', color: 'var(--text-secondary)' }}>{circle.sublabel}</span>}
-                  {!circle.earned && circle.progress && <span style={{ fontSize: '0.38rem', color: 'var(--text-secondary)' }}>{circle.progress}</span>}
-                </div>
-              ))}
-            </div>
-          )}
+          <DogTitleCircles circles={titleCircles} />
         </div>
 
         {/* Stats circles */}
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '1rem', marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem',
+          gap: '1rem', maxWidth: '400px', margin: '0 auto 2rem',
         }}>
           {[
             { label: t('Αγώνες', 'Events'), value: results.length },
@@ -385,7 +307,7 @@ export default function DogProfilePage() {
           ))}
         </div>
 
-        {/* Per-discipline ranking breakdown */}
+        {/* Per-discipline ranking */}
         {(foundationRank || sportRanks.length > 0) && (
           <div style={{ marginBottom: '2rem' }}>
             <h2 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '1rem' }}>
@@ -393,93 +315,47 @@ export default function DogProfilePage() {
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
 
-              {/* Foundation */}
-              {foundationRank && (
-                <>
-                  <div style={{
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '0.85rem 1.25rem',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{ fontSize: '1.2rem' }}>⭐</span>
-                      <div>
-                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
-                          {t('Εισαγωγικό Επίπεδο', 'Entry Level')}
-                        </p>
-                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
-                          {t('Συμμετοχές', 'Participations')}: {foundationRank.entry_participations}/2
-                        </p>
-                      </div>
+              {foundationRank && (<>
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>⭐</span>
+                    <div>
+                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{t('Εισαγωγικό Επίπεδο', 'Entry Level')}</p>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>{t('Συμμετοχές', 'Participations')}: {foundationRank.entry_participations}/2</p>
                     </div>
-                    <span style={{
-                      fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem',
-                      borderRadius: '99px',
-                      background: foundationRank.entry_title ? 'rgba(126,184,247,0.15)' : 'var(--bg)',
-                      border: `1px solid ${foundationRank.entry_title ? '#7eb8f7' : 'var(--border)'}`,
-                      color: foundationRank.entry_title ? '#7eb8f7' : 'var(--text-secondary)',
-                    }}>
-                      {foundationRank.entry_title ? '🏅 ' + t('Τίτλος', 'Title') : t('Σε εξέλιξη', 'In progress')}
-                    </span>
                   </div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '99px', background: foundationRank.entry_title ? 'rgba(126,184,247,0.15)' : 'var(--bg)', border: `1px solid ${foundationRank.entry_title ? '#7eb8f7' : 'var(--border)'}`, color: foundationRank.entry_title ? '#7eb8f7' : 'var(--text-secondary)' }}>
+                    {foundationRank.entry_title ? '🏅 ' + t('Τίτλος', 'Title') : t('Σε εξέλιξη', 'In progress')}
+                  </span>
+                </div>
 
-                  <div style={{
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '0.85rem 1.25rem',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{ fontSize: '1.2rem' }}>⭐⭐</span>
-                      <div>
-                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
-                          {t('Βασικό Επίπεδο', 'Basic Level')}
-                        </p>
-                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
-                          {t('Συμμετοχές', 'Participations')}: {foundationRank.basic_participations}/2
-                        </p>
-                      </div>
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>⭐⭐</span>
+                    <div>
+                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{t('Βασικό Επίπεδο', 'Basic Level')}</p>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>{t('Συμμετοχές', 'Participations')}: {foundationRank.basic_participations}/2</p>
                     </div>
-                    <span style={{
-                      fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem',
-                      borderRadius: '99px',
-                      background: foundationRank.basic_title ? 'rgba(126,247,160,0.15)' : 'var(--bg)',
-                      border: `1px solid ${foundationRank.basic_title ? '#7ef7a0' : 'var(--border)'}`,
-                      color: foundationRank.basic_title ? '#7ef7a0' : 'var(--text-secondary)',
-                    }}>
-                      {foundationRank.basic_title ? '🏅 ' + t('Τίτλος', 'Title') : foundationRank.entry_title ? t('Σε εξέλιξη', 'In progress') : t('Κλειδωμένο', 'Locked')}
-                    </span>
                   </div>
-                </>
-              )}
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '99px', background: foundationRank.basic_title ? 'rgba(126,247,160,0.15)' : 'var(--bg)', border: `1px solid ${foundationRank.basic_title ? '#7ef7a0' : 'var(--border)'}`, color: foundationRank.basic_title ? '#7ef7a0' : 'var(--text-secondary)' }}>
+                    {foundationRank.basic_title ? '🏅 ' + t('Τίτλος', 'Title') : foundationRank.entry_title ? t('Σε εξέλιξη', 'In progress') : t('Κλειδωμένο', 'Locked')}
+                  </span>
+                </div>
+              </>)}
 
-              {/* Discipline sports */}
               {sportRanks.filter(sr => !sr.sports?.is_foundation).map(sr => {
                 const sportName = t(sr.sports?.name_el, sr.sports?.name_en) || sr.sports?.name_el
                 const icon = DISCIPLINE_ICONS[sr.sports?.name_el] || '🏅'
                 return (
-                  <div key={sr.id} style={{
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '0.85rem 1.25rem',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}>
+                  <div key={sr.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <span style={{ fontSize: '1.2rem' }}>{icon}</span>
                       <div>
-                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
-                          {sportName} — {t('Επίπεδο', 'Level')} {sr.current_sublevel}
-                        </p>
-                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
-                          {t('Συμμετοχές', 'Participations')}: {sr.participations}/2 · {t('Σύνολο πόντων', 'Total points')}: {sr.total_points}
-                        </p>
+                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{sportName} — {t('Επίπεδο', 'Level')} {sr.current_sublevel}</p>
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>{t('Συμμετοχές', 'Participations')}: {sr.participations}/2 · {t('Σύνολο πόντων', 'Total points')}: {sr.total_points}</p>
                       </div>
                     </div>
-                    <span style={{
-                      fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem',
-                      borderRadius: '99px',
-                      background: sr.title ? 'rgba(232,185,79,0.15)' : 'var(--bg)',
-                      border: `1px solid ${sr.title ? 'var(--accent)' : 'var(--border)'}`,
-                      color: sr.title ? 'var(--accent)' : 'var(--text-secondary)',
-                    }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '99px', background: sr.title ? 'rgba(232,185,79,0.15)' : 'var(--bg)', border: `1px solid ${sr.title ? 'var(--accent)' : 'var(--border)'}`, color: sr.title ? 'var(--accent)' : 'var(--text-secondary)' }}>
                       {sr.title ? '🏅 ' + t('Τίτλος', 'Title') : t('Σε εξέλιξη', 'In progress')}
                     </span>
                   </div>
@@ -495,11 +371,7 @@ export default function DogProfilePage() {
         </h2>
 
         {results.length === 0 ? (
-          <div style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: '10px', padding: '2rem', textAlign: 'center',
-            color: 'var(--text-secondary)', fontSize: '0.9rem',
-          }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             {t('Δεν υπάρχουν αγώνες ακόμα.', 'No competitions yet.')}
           </div>
         ) : (
@@ -511,8 +383,7 @@ export default function DogProfilePage() {
                 background: 'var(--bg-card)', border: '1px solid var(--border)',
                 borderRadius: '10px', padding: '1rem', marginBottom: '0.75rem',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                cursor: r.events?.id ? 'pointer' : 'default',
-                transition: 'border-color 0.15s',
+                cursor: r.events?.id ? 'pointer' : 'default', transition: 'border-color 0.15s',
               }}
               onMouseEnter={e => { if (r.events?.id) e.currentTarget.style.borderColor = 'var(--accent)' }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
@@ -528,14 +399,8 @@ export default function DogProfilePage() {
                 </p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                {r.placement && (
-                  <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)' }}>
-                    #{r.placement}
-                  </p>
-                )}
-                {r.score != null && (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.score} pts</p>
-                )}
+                {r.placement && <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)' }}>#{r.placement}</p>}
+                {r.score != null && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.score} pts</p>}
                 <p style={{ fontSize: '0.72rem', fontWeight: 600, color: r.passed ? '#7ef7a0' : '#f77e7e' }}>
                   {r.passed ? '✓ Pass' : '✗ Fail'}
                 </p>
@@ -556,11 +421,11 @@ export default function DogProfilePage() {
         )}
 
         <style>{`
-          .dog-circles-desktop { display: grid; }
-          .dog-circles-mobile  { display: none; }
+          .circles-desktop { display: grid !important; }
+          .circles-mobile  { display: none !important; }
           @media (max-width: 600px) {
-            .dog-circles-desktop { display: none !important; }
-            .dog-circles-mobile  { display: block !important; }
+            .circles-desktop { display: none !important; }
+            .circles-mobile  { display: block !important; }
           }
         `}</style>
       </div>

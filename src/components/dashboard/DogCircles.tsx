@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+
 import { useLang } from '@/context/LanguageContext'
 import Link from 'next/link'
 
@@ -13,7 +13,6 @@ function getAngles(count: number): number[] {
 
 export default function DogCircles({ dogs }: { dogs: any[] }) {
   const { t } = useLang()
-  const [lightbox, setLightbox] = useState<string | null>(null)
   const shown = dogs.filter(d => d.status === 'active' || !d.status).slice(0, 3)
 
   if (shown.length === 0) return (
@@ -60,20 +59,16 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
               left: `calc(50% + ${x}px - 32px)`,
               top: `calc(50% + ${y}px - 32px)`,
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              zIndex: 2,
-              pointerEvents: 'auto',
+              zIndex: 2, pointerEvents: 'auto',
             }}>
               <Link href={`/dogs/${dog.id}`} style={{ textDecoration: 'none' }}>
-                <div
-                  onClick={e => { if (dog.photo_url) { e.preventDefault(); setLightbox(dog.photo_url) } }}
-                  style={{
-                    width: '64px', height: '64px', borderRadius: '50%',
-                    border: '2px solid var(--accent)', background: 'var(--bg-card)',
-                    overflow: 'hidden', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 0 12px rgba(232,185,79,0.2)',
-                  }}
-                >
+                <div style={{
+                  width: '64px', height: '64px', borderRadius: '50%',
+                  border: '2px solid var(--accent)', background: 'var(--bg-card)',
+                  overflow: 'hidden', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 12px rgba(232,185,79,0.2)',
+                }}>
                   {dog.photo_url
                     ? <img src={dog.photo_url} alt={dog.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
                     : <span style={{ fontSize: '1.5rem' }}>🐕</span>
@@ -95,15 +90,12 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
         {shown.map(dog => (
           <div key={dog.id} style={{ textAlign: 'center' }}>
             <Link href={`/dogs/${dog.id}`} style={{ textDecoration: 'none' }}>
-              <div
-                onClick={e => { if (dog.photo_url) { e.preventDefault(); setLightbox(dog.photo_url) } }}
-                style={{
-                  width: '56px', height: '56px', borderRadius: '50%',
-                  border: '2px solid var(--accent)', background: 'var(--bg-card)',
-                  overflow: 'hidden', cursor: 'pointer', margin: '0 auto',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
+              <div style={{
+                width: '56px', height: '56px', borderRadius: '50%',
+                border: '2px solid var(--accent)', background: 'var(--bg-card)',
+                overflow: 'hidden', cursor: 'pointer', margin: '0 auto',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
                 {dog.photo_url
                   ? <img src={dog.photo_url} alt={dog.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
                   : <span style={{ fontSize: '1.3rem' }}>🐕</span>
@@ -117,16 +109,6 @@ export default function DogCircles({ dogs }: { dogs: any[] }) {
           </div>
         ))}
       </div>
-
-      {lightbox && (
-        <div onClick={() => setLightbox(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 2000, cursor: 'zoom-out',
-        }}>
-          <img src={lightbox} alt="dog" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }} />
-        </div>
-      )}
 
       <style>{dogCirclesStyle}</style>
     </>
