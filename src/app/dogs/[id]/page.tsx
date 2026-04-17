@@ -5,14 +5,36 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 
+const DISCIPLINE_ICONS: Record<string, string> = {
+  'Υπακοή': '🎯',
+  'Προστασία': '🛡️',
+  'Ανίχνευση': '🔍',
+  'Ευκινησία': '⚡',
+}
+
+const ARC_RADIUS = 148
+function degToRad(deg: number) { return (deg * Math.PI) / 180 }
+
+function getAngles(count: number): number[] {
+  if (count === 1) return [270]
+  if (count === 2) return [240, 300]
+  if (count === 3) return [210, 270, 330]
+  if (count === 4) return [210, 255, 305, 350]
+  if (count === 5) return [200, 240, 280, 320, 360]
+  return [180, 220, 260, 300, 340, 20]
+}
+
 export default function DogProfilePage() {
   const { t } = useLang()
   const { id } = useParams()
   const router = useRouter()
   const supabase = createClient()
+
   const [dog, setDog] = useState<any>(null)
   const [owner, setOwner] = useState<any>(null)
   const [results, setResults] = useState<any[]>([])
+  const [foundationRank, setFoundationRank] = useState<any>(null)
+  const [sportRanks, setSportRanks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(false)
 
@@ -21,18 +43,33 @@ export default function DogProfilePage() {
   }, [id])
 
   async function loadDog(dogId: string) {
-    const [dogRes, resultsRes] = await Promise.all([
+    const [dogRes, resultsRes, foundationRes, sportRes] = await Promise.all([
       supabase.from('dogs').select('*, breeds(name)').eq('id', dogId).single(),
       supabase.from('competition_results')
-        .select('*, events(name, date, location)')
+        .select('*, events(id, title_el, title_en, event_date, location)')
         .eq('dog_id', dogId)
         .eq('status', 'approved')
         .order('created_at', { ascending: false }),
+      supabase.from('foundation_ranking')
+        .select('entry_participations, entry_title, basic_participations, basic_title')
+        .eq('dog_id', dogId)
+        .maybeSingle(),
+      supabase.from('dog_sport_ranking')
+        .select('*, sports(id, name_el, name_en, is_foundation)')
+        .eq('dog_id', dogId),
     ])
+
     if (!dogRes.data) { router.push('/'); return }
     setDog(dogRes.data)
     setResults(resultsRes.data || [])
-    const ownerRes = await supabase.from('profiles').select('full_name, member_id, avatar_url').eq('id', dogRes.data.owner_id).single()
+    setFoundationRank(foundationRes.data || null)
+    setSportRanks(sportRes.data || [])
+
+    const ownerRes = await supabase
+      .from('profiles')
+      .select('full_name, member_id, avatar_url')
+      .eq('id', dogRes.data.owner_id)
+      .single()
     setOwner(ownerRes.data)
     setLoading(false)
   }
@@ -47,12 +84,6 @@ export default function DogProfilePage() {
     if (years === 0) return `${months} ${t('μήνες', 'months')}`
     if (months === 0) return `${years} ${t('χρόνια', 'years')}`
     return `${years} ${t('χρόνια', 'years')} ${t('και', 'and')} ${months} ${t('μήνες', 'months')}`
-  }
-
-  function formatDate(iso: string) {
-    if (!iso) return '—'
-    const [y, m, d] = iso.split('-')
-    return `${d}/${m}/${y}`
   }
 
   const statusColor = (s: string) => {
@@ -72,32 +103,63 @@ export default function DogProfilePage() {
 
   const isDeceased = dog.status === 'in_our_memories'
 
+  // Build title circles
+  type TitleCircle = {
+    label: string
+    sublabel?: string
+    icon: string
+    color: string
+    earned: boolean
+    progress?: string // e.g. "1/2" for unearned disciplines
+  }
+
+  const titleCircles: TitleCircle[] = []
+
+  // Foundation circles
+  const entryEarned = foundationRank?.entry_title === true
+  const basicEarned = foundationRank?.basic_title === true
+  const entryProgress = foundationRank ? `${foundationRank.entry_participations}/2` : '0/2'
+  const basicProgress = foundationRank ? `${foundationRank.basic_participations}/2` : '0/2'
+
+  if (entryEarned) {
+    titleCircles.push({ label: t('Εισαγωγικό', 'Entry'), icon: '⭐', color: '#7eb8f7', earned: true })
+  } else if (foundationRank && foundationRank.entry_participations > 0) {
+    titleCircles.push({ label: t('Εισαγωγικό', 'Entry'), icon: '⭐', color: '#7eb8f7', earned: false, progress: entryProgress })
+  }
+
+  if (basicEarned) {
+    titleCircles.push({ label: t('Βασικό', 'Basic'), icon: '⭐⭐', color: '#7ef7a0', earned: true })
+  } else if (entryEarned && foundationRank && foundationRank.basic_participations > 0) {
+    titleCircles.push({ label: t('Βασικό', 'Basic'), icon: '⭐⭐', color: '#7ef7a0', earned: false, progress: basicProgress })
+  }
+
+  // Discipline circles
+  for (const sr of sportRanks) {
+    if (sr.sports?.is_foundation) continue
+    const sportName = t(sr.sports?.name_el, sr.sports?.name_en) || sr.sports?.name_el || '?'
+    const icon = DISCIPLINE_ICONS[sr.sports?.name_el] || '🏅'
+    const earned = sr.title === true || sr.participations > 0 || sr.total_points > 0
+    if (earned) {
+      titleCircles.push({
+        label: sportName,
+        sublabel: `Lvl ${sr.current_sublevel}`,
+        icon,
+        color: 'var(--accent)',
+        earned: sr.title === true,
+        progress: sr.title ? undefined : `${sr.participations}/2`,
+      })
+    }
+  }
+
+  const angles = getAngles(titleCircles.length)
+  const earnedCount = titleCircles.filter(c => c.earned).length
+
   return (
-    <div style={{ minHeight: '90vh', padding: '2rem 1rem', maxWidth: '900px', margin: '0 auto' }}>
+    <div style={{ minHeight: '90vh', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 1rem' }}>
 
-      {/* Top section — photo + basic info side by side */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', marginBottom: '2rem', paddingTop: '1rem', flexWrap: 'wrap' as const }}>
-
-        {/* Photo circle */}
-        <div
-          onClick={() => dog.photo_url && setLightbox(true)}
-          style={{
-            width: '180px', height: '180px', borderRadius: '50%',
-            border: `3px solid ${statusColor(dog.status || 'active')}`,
-            background: 'var(--bg-card)', overflow: 'hidden', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: `0 0 30px ${isDeceased ? 'rgba(149,117,205,0.2)' : 'rgba(232,185,79,0.15)'}`,
-            cursor: dog.photo_url ? 'zoom-in' : 'default',
-          }}
-        >
-          {dog.photo_url
-            ? <img src={dog.photo_url} alt={dog.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
-            : <span style={{ fontSize: '5rem' }}>{isDeceased ? '🕯️' : '🐕'}</span>
-          }
-        </div>
-
-        {/* Info next to photo */}
-        <div style={{ flex: 1, minWidth: '200px' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <h1 style={{
             fontSize: 'clamp(1.5rem, 4vw, 2.5rem)',
             fontFamily: 'Bebas Neue, sans-serif',
@@ -110,132 +172,398 @@ export default function DogProfilePage() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.15rem' }}>
             Dog ID: {dog.dog_id}
           </p>
-          <p style={{ fontSize: '0.85rem', fontWeight: 600, color: statusColor(dog.status || 'active'), marginBottom: '0.5rem' }}>
+          <p style={{ fontSize: '0.85rem', fontWeight: 600, color: statusColor(dog.status || 'active'), marginBottom: '0.2rem' }}>
             ● {dog.status === 'active' ? t('Ενεργός', 'Active') : dog.status === 'retired' ? t('Αποσυρμένος', 'Retired') : '🕯️ ' + t('Στη μνήμη του', 'In our memories')}
           </p>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.15rem' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
             {dog.breeds?.name || t('Άγνωστη φυλή', 'Unknown breed')}
-          </p>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.15rem' }}>
-            {dog.gender === 'male' ? t('Αρσενικό', 'Male') : dog.gender === 'female' ? t('Θηλυκό', 'Female') : ''}
+            {dog.gender ? ` · ${dog.gender === 'male' ? t('Αρσενικό', 'Male') : t('Θηλυκό', 'Female')}` : ''}
             {dog.neutered ? ` · ${t('Στειρωμένο', 'Neutered')}` : ''}
+            {!isDeceased && dog.date_of_birth ? ` · ${calcAge(dog.date_of_birth)}` : ''}
           </p>
-          {/* Age — hidden if deceased */}
-          {!isDeceased && dog.date_of_birth && (
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              {calcAge(dog.date_of_birth)}
+          {dog.chip_number && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: '0.2rem' }}>
+              🔖 Chip: {dog.chip_number}
             </p>
           )}
+        </div>
 
-          {/* Titles list */}
-          {results.length > 0 && (
-            <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap' as const, gap: '0.4rem' }}>
-              {/* Placeholder until ranking system is built */}
-              <span style={{
-                background: 'rgba(232,185,79,0.1)', border: '1px solid rgba(232,185,79,0.3)',
-                borderRadius: '20px', padding: '0.2rem 0.65rem',
-                fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600,
-              }}>
-                🏅 {t('Τίτλοι TBD', 'Titles TBD')}
-              </span>
+        {/* Circle layout — desktop */}
+        <div className="dog-circles-desktop" style={{
+          display: 'grid',
+          gridTemplateColumns: '120px 1fr 120px',
+          alignItems: 'center',
+          gap: '1rem',
+          marginBottom: '2.5rem',
+          minHeight: '220px',
+        }}>
+          {/* Left — owner */}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            {owner && (
+              <div
+                onClick={() => router.push(`/profile/${owner.member_id}`)}
+                style={{ cursor: 'pointer', textAlign: 'center' }}
+              >
+                <div style={{
+                  width: '72px', height: '72px', borderRadius: '50%',
+                  border: '2px solid var(--accent)', overflow: 'hidden',
+                  background: 'var(--bg-card)', margin: '0 auto',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {owner.avatar_url
+                    ? <img src={owner.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: '1.8rem' }}>🐾</span>
+                  }
+                </div>
+                <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.35rem', maxWidth: '80px', textAlign: 'center' }}>
+                  {owner.full_name}
+                </p>
+                <p style={{ fontSize: '0.6rem', color: 'var(--accent)' }}>#{owner.member_id}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Center — dog photo + title orbit */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '220px' }}>
+
+            {/* Title orbit circles — pointerEvents none on wrapper */}
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+              {titleCircles.map((circle, i) => {
+                const angle = degToRad(angles[i] ?? 0)
+                const x = ARC_RADIUS * Math.cos(angle)
+                const y = ARC_RADIUS * Math.sin(angle)
+                return (
+                  <div key={i} style={{
+                    position: 'absolute',
+                    left: `calc(50% + ${x}px - 32px)`,
+                    top: `calc(50% + ${y}px - 32px)`,
+                    width: '64px', height: '64px', borderRadius: '50%',
+                    background: 'var(--bg-card)',
+                    border: `2px solid ${circle.earned ? circle.color : 'var(--border)'}`,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: '1px', zIndex: 1,
+                    boxShadow: circle.earned ? `0 0 12px ${circle.color}44` : 'none',
+                    opacity: circle.earned ? 1 : 0.5,
+                    pointerEvents: 'auto',
+                  }}>
+                    <span style={{ fontSize: '1rem', lineHeight: 1 }}>{circle.icon}</span>
+                    <span style={{
+                      fontSize: '0.48rem', fontWeight: 600,
+                      color: circle.earned ? circle.color : 'var(--text-secondary)',
+                      textAlign: 'center', padding: '0 3px', lineHeight: 1.2,
+                      maxWidth: '60px', overflow: 'hidden',
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                    }}>
+                      {circle.label}
+                    </span>
+                    {circle.sublabel && (
+                      <span style={{ fontSize: '0.42rem', color: 'var(--text-secondary)', lineHeight: 1 }}>
+                        {circle.sublabel}
+                      </span>
+                    )}
+                    {!circle.earned && circle.progress && (
+                      <span style={{ fontSize: '0.42rem', color: 'var(--text-secondary)', lineHeight: 1 }}>
+                        {circle.progress}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Dog photo circle */}
+            <div
+              onClick={() => dog.photo_url && setLightbox(true)}
+              style={{
+                width: '200px', height: '200px', borderRadius: '50%',
+                border: `3px solid ${statusColor(dog.status || 'active')}`,
+                background: 'var(--bg-card)', overflow: 'hidden',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: `0 0 30px ${isDeceased ? 'rgba(149,117,205,0.2)' : 'rgba(232,185,79,0.15)'}`,
+                cursor: dog.photo_url ? 'zoom-in' : 'default',
+                position: 'relative', zIndex: 3,
+              }}
+            >
+              {dog.photo_url
+                ? <img src={dog.photo_url} alt={dog.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
+                : <span style={{ fontSize: '5rem' }}>{isDeceased ? '🕯️' : '🐕'}</span>
+              }
+            </div>
+          </div>
+
+          {/* Right — spacer */}
+          <div />
+        </div>
+
+        {/* Mobile layout */}
+        <div className="dog-circles-mobile" style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+            <div
+              onClick={() => dog.photo_url && setLightbox(true)}
+              style={{
+                width: '160px', height: '160px', borderRadius: '50%',
+                border: `3px solid ${statusColor(dog.status || 'active')}`,
+                background: 'var(--bg-card)', overflow: 'hidden',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: dog.photo_url ? 'zoom-in' : 'default',
+              }}
+            >
+              {dog.photo_url
+                ? <img src={dog.photo_url} alt={dog.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
+                : <span style={{ fontSize: '4rem' }}>{isDeceased ? '🕯️' : '🐕'}</span>
+              }
+            </div>
+          </div>
+
+          {/* Owner on mobile */}
+          {owner && (
+            <div
+              onClick={() => router.push(`/profile/${owner.member_id}`)}
+              style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-card)', borderRadius: '99px', padding: '0.35rem 0.85rem', border: '1px solid var(--border)' }}>
+                {owner.avatar_url
+                  ? <img src={owner.avatar_url} style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }} />
+                  : <span>🐾</span>
+                }
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{owner.full_name}</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--accent)' }}>#{owner.member_id}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Title circles on mobile */}
+          {titleCircles.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'center' }}>
+              {titleCircles.map((circle, i) => (
+                <div key={i} style={{
+                  width: '56px', height: '56px', borderRadius: '50%',
+                  background: 'var(--bg-card)',
+                  border: `2px solid ${circle.earned ? circle.color : 'var(--border)'}`,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: '1px', opacity: circle.earned ? 1 : 0.5,
+                  boxShadow: circle.earned ? `0 0 10px ${circle.color}44` : 'none',
+                }}>
+                  <span style={{ fontSize: '0.9rem' }}>{circle.icon}</span>
+                  <span style={{ fontSize: '0.42rem', color: circle.earned ? circle.color : 'var(--text-secondary)', textAlign: 'center', padding: '0 2px' }}>
+                    {circle.label}
+                  </span>
+                  {circle.sublabel && <span style={{ fontSize: '0.38rem', color: 'var(--text-secondary)' }}>{circle.sublabel}</span>}
+                  {!circle.earned && circle.progress && <span style={{ fontSize: '0.38rem', color: 'var(--text-secondary)' }}>{circle.progress}</span>}
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
 
-      {/* Owner */}
-      {owner && (
+        {/* Stats circles */}
         <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: '10px', padding: '1rem', marginBottom: '2rem',
-          display: 'flex', alignItems: 'center', gap: '1rem',
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '1rem', marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem',
         }}>
-          <div style={{
-            width: '44px', height: '44px', borderRadius: '50%',
-            border: '2px solid var(--accent)', overflow: 'hidden',
-            background: 'var(--bg)', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {owner.avatar_url
-              ? <img src={owner.avatar_url} alt={owner.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ fontSize: '1.2rem' }}>🐾</span>
-            }
-          </div>
-          <div>
-            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: '0.1rem' }}>{t('Ιδιοκτήτης', 'Owner')}</p>
-            <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{owner.full_name}</p>
-            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>ID: {owner.member_id}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Stats circles — smaller */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '1rem', marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem',
-      }}>
-        {[
-          { label: t('Αγώνες', 'Events'), value: results.length },
-          { label: t('Πόντοι', 'Points'), value: '—' },
-          { label: t('Κατάταξη', 'Best Rank'), value: '—' },
-        ].map(stat => (
-          <div key={stat.label} style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: '50%', aspectRatio: '1',
-            display: 'flex', flexDirection: 'column' as const,
-            alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(232,185,79,0.08)',
-          }}>
-            <p style={{ fontSize: 'clamp(1rem, 2.5vw, 1.4rem)', fontFamily: 'Bebas Neue, sans-serif', color: 'var(--accent)', letterSpacing: '0.05em' }}>{stat.value}</p>
-            <p style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center', padding: '0 0.25rem' }}>{stat.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Events list */}
-      <h2 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '1rem' }}>
-        {t('Ιστορικό Αγώνων', 'Competition History')}
-      </h2>
-
-      {results.length === 0 ? (
-        <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: '10px', padding: '2rem', textAlign: 'center',
-          color: 'var(--text-secondary)', fontSize: '0.9rem',
-        }}>
-          {t('Δεν υπάρχουν αγώνες ακόμα.', 'No competitions yet.')}
-        </div>
-      ) : (
-        results.map(r => (
-          <div key={r.id} style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: '10px', padding: '1rem', marginBottom: '0.75rem',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <div>
-              <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{r.events?.name || '—'}</p>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                {formatDate(r.events?.date)}{r.events?.location ? ` · ${r.events.location}` : ''}
+          {[
+            { label: t('Αγώνες', 'Events'), value: results.length },
+            { label: t('Τίτλοι', 'Titles'), value: earnedCount },
+            { label: t('Αθλήματα', 'Sports'), value: sportRanks.length },
+          ].map(stat => (
+            <div key={stat.label} style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: '50%', aspectRatio: '1',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 20px rgba(232,185,79,0.08)',
+            }}>
+              <p style={{ fontSize: 'clamp(1rem, 2.5vw, 1.4rem)', fontFamily: 'Bebas Neue, sans-serif', color: 'var(--accent)', letterSpacing: '0.05em' }}>
+                {stat.value}
+              </p>
+              <p style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center', padding: '0 0.25rem' }}>
+                {stat.label}
               </p>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              {r.placement && <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)' }}>#{r.placement}</p>}
-              {r.score && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.score} pts</p>}
+          ))}
+        </div>
+
+        {/* Per-discipline ranking breakdown */}
+        {(foundationRank || sportRanks.length > 0) && (
+          <div style={{ marginBottom: '2rem' }}>
+            <h2 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+              {t('Κατάταξη', 'Ranking')}
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+
+              {/* Foundation */}
+              {foundationRank && (
+                <>
+                  <div style={{
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: '10px', padding: '0.85rem 1.25rem',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>⭐</span>
+                      <div>
+                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
+                          {t('Εισαγωγικό Επίπεδο', 'Entry Level')}
+                        </p>
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
+                          {t('Συμμετοχές', 'Participations')}: {foundationRank.entry_participations}/2
+                        </p>
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem',
+                      borderRadius: '99px',
+                      background: foundationRank.entry_title ? 'rgba(126,184,247,0.15)' : 'var(--bg)',
+                      border: `1px solid ${foundationRank.entry_title ? '#7eb8f7' : 'var(--border)'}`,
+                      color: foundationRank.entry_title ? '#7eb8f7' : 'var(--text-secondary)',
+                    }}>
+                      {foundationRank.entry_title ? '🏅 ' + t('Τίτλος', 'Title') : t('Σε εξέλιξη', 'In progress')}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: '10px', padding: '0.85rem 1.25rem',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>⭐⭐</span>
+                      <div>
+                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
+                          {t('Βασικό Επίπεδο', 'Basic Level')}
+                        </p>
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
+                          {t('Συμμετοχές', 'Participations')}: {foundationRank.basic_participations}/2
+                        </p>
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem',
+                      borderRadius: '99px',
+                      background: foundationRank.basic_title ? 'rgba(126,247,160,0.15)' : 'var(--bg)',
+                      border: `1px solid ${foundationRank.basic_title ? '#7ef7a0' : 'var(--border)'}`,
+                      color: foundationRank.basic_title ? '#7ef7a0' : 'var(--text-secondary)',
+                    }}>
+                      {foundationRank.basic_title ? '🏅 ' + t('Τίτλος', 'Title') : foundationRank.entry_title ? t('Σε εξέλιξη', 'In progress') : t('Κλειδωμένο', 'Locked')}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {/* Discipline sports */}
+              {sportRanks.filter(sr => !sr.sports?.is_foundation).map(sr => {
+                const sportName = t(sr.sports?.name_el, sr.sports?.name_en) || sr.sports?.name_el
+                const icon = DISCIPLINE_ICONS[sr.sports?.name_el] || '🏅'
+                return (
+                  <div key={sr.id} style={{
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: '10px', padding: '0.85rem 1.25rem',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>{icon}</span>
+                      <div>
+                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
+                          {sportName} — {t('Επίπεδο', 'Level')} {sr.current_sublevel}
+                        </p>
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
+                          {t('Συμμετοχές', 'Participations')}: {sr.participations}/2 · {t('Σύνολο πόντων', 'Total points')}: {sr.total_points}
+                        </p>
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem',
+                      borderRadius: '99px',
+                      background: sr.title ? 'rgba(232,185,79,0.15)' : 'var(--bg)',
+                      border: `1px solid ${sr.title ? 'var(--accent)' : 'var(--border)'}`,
+                      color: sr.title ? 'var(--accent)' : 'var(--text-secondary)',
+                    }}>
+                      {sr.title ? '🏅 ' + t('Τίτλος', 'Title') : t('Σε εξέλιξη', 'In progress')}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
-        ))
-      )}
+        )}
 
-      {/* Lightbox */}
-      {lightbox && (
-        <div onClick={() => setLightbox(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 2000, cursor: 'zoom-out',
-        }}>
-          <img src={dog.photo_url} alt={dog.name} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }} />
-        </div>
-      )}
+        {/* Competition history */}
+        <h2 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '1rem' }}>
+          {t('Ιστορικό Αγώνων', 'Competition History')}
+        </h2>
+
+        {results.length === 0 ? (
+          <div style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: '10px', padding: '2rem', textAlign: 'center',
+            color: 'var(--text-secondary)', fontSize: '0.9rem',
+          }}>
+            {t('Δεν υπάρχουν αγώνες ακόμα.', 'No competitions yet.')}
+          </div>
+        ) : (
+          results.map(r => (
+            <div
+              key={r.id}
+              onClick={() => r.events?.id && router.push(`/events/${r.events.id}`)}
+              style={{
+                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: '10px', padding: '1rem', marginBottom: '0.75rem',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                cursor: r.events?.id ? 'pointer' : 'default',
+                transition: 'border-color 0.15s',
+              }}
+              onMouseEnter={e => { if (r.events?.id) e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+            >
+              <div>
+                <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+                  {t(r.events?.title_el, r.events?.title_en || r.events?.title_el) || '—'}
+                  {r.events?.id && <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginLeft: '0.35rem' }}>→</span>}
+                </p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  {r.events?.event_date ? new Date(r.events.event_date).toLocaleDateString('el-GR') : '—'}
+                  {r.events?.location ? ` · ${r.events.location}` : ''}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {r.placement && (
+                  <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)' }}>
+                    #{r.placement}
+                  </p>
+                )}
+                {r.score != null && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.score} pts</p>
+                )}
+                <p style={{ fontSize: '0.72rem', fontWeight: 600, color: r.passed ? '#7ef7a0' : '#f77e7e' }}>
+                  {r.passed ? '✓ Pass' : '✗ Fail'}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+
+        {/* Lightbox */}
+        {lightbox && (
+          <div onClick={() => setLightbox(false)} style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 2000, cursor: 'zoom-out',
+          }}>
+            <img src={dog.photo_url} alt={dog.name} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }} />
+          </div>
+        )}
+
+        <style>{`
+          .dog-circles-desktop { display: grid !important; }
+          .dog-circles-mobile  { display: none !important; }
+          @media (max-width: 600px) {
+            .dog-circles-desktop { display: none !important; }
+            .dog-circles-mobile  { display: block !important; }
+          }
+        `}</style>
+      </div>
     </div>
   )
 }
