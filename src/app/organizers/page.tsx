@@ -11,9 +11,9 @@ interface RoleMember {
   total_events: number
 }
 
-const ROLE_COLOR = '#7eb8f7'
+const ROLE_COLOR = '#7ef7a0'
 
-export default function JudgesPage() {
+export default function OrganizersPage() {
   const { t } = useLang()
   const router = useRouter()
   const supabase = createClient()
@@ -26,7 +26,7 @@ export default function JudgesPage() {
     const { data: roles } = await supabase
       .from('user_roles')
       .select('user_id')
-      .eq('role', 'judge')
+      .eq('role', 'organizer')
 
     if (!roles?.length) { setLoading(false); return }
 
@@ -46,7 +46,7 @@ export default function JudgesPage() {
           .from('event_assignments')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', p.id)
-          .eq('role', 'judge')
+          .eq('role', 'organizer')
           .eq('status', 'accepted')
         return {
           member_id: p.member_id,
@@ -67,13 +67,13 @@ export default function JudgesPage() {
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 1.5rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
           <p style={{ color: ROLE_COLOR, fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-            ⚖️ {t('Κοινότητα', 'Community')}
+            📋 {t('Κοινότητα', 'Community')}
           </p>
           <h1 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(2rem, 5vw, 3rem)', letterSpacing: '0.05em', color: 'var(--text-primary)', margin: 0 }}>
-            {t('ΚΡΙΤΕΣ', 'JUDGES')}
+            {t('ΔΙΟΡΓΑΝΩΤΕΣ', 'ORGANIZERS')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: '0.5rem' }}>
-            {t('Γνωρίστε τους πιστοποιημένους κριτές των αγώνων.', 'Meet the certified judges of the games.')}
+            {t('Γνωρίστε τους διοργανωτές των αγώνων.', 'Meet the organizers of the games.')}
           </p>
         </div>
 
@@ -83,14 +83,14 @@ export default function JudgesPage() {
           </div>
         ) : members.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            {t('Δεν υπάρχουν κριτές ακόμα.', 'No judges yet.')}
+            {t('Δεν υπάρχουν διοργανωτές ακόμα.', 'No organizers yet.')}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.25rem' }}>
             {members.map(m => (
               <div
                 key={m.member_id}
-                onClick={() => router.push(`/judges/${m.member_id}`)}
+                onClick={() => router.push(`/organizers/${m.member_id}`)}
                 style={{
                   background: 'var(--bg-card)',
                   border: '1px solid var(--border)',
