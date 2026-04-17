@@ -548,10 +548,7 @@ export default function EventDetailPage() {
                           {(() => {
                             const dogName = userDogs.find(d => d.id === userReg.dog_id)?.name || '—'
                             const catTitle = t(cat.title_el, cat.title_en || cat.title_el)
-                            const canCancel = userReg.status === 'confirmed'
-                              && event.status !== 'completed'
-                              && event.status !== 'cancelled'
-                              && new Date(event.event_date) > new Date()
+                            const canCancel = userReg.status === 'confirmed' && event.status !== 'completed' && event.status !== 'cancelled' && event.status !== 'results_approved' && new Date(event.event_date) > new Date()
                             return (
                               <div style={{
                                 background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)',
@@ -580,7 +577,7 @@ export default function EventDetailPage() {
                           })()}
                         </div>
                       ) : (
-                        isLoggedIn && regOpen && upcoming && (
+                        isLoggedIn && regOpen && upcoming && !isLocked && (
                           <button onClick={() => { setRegisteringCat(isRegistering ? null : cat.id); setSelectedDog(''); setRegMsg(null) }}
                             style={{
                               background: isRegistering ? 'var(--bg-card)' : 'var(--accent)',
