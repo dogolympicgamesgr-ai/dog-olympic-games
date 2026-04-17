@@ -63,12 +63,12 @@ export default function JudgePage() {
     setTotalEvents(distinctEventIds.length)
 
     // Sport breakdown — count per sport
-    const sportMap: Record<string, { name_el: string; name_en: string; count: number }> = {}
+    const sportMap: Record<string, SportStat> = {}
     for (const a of assignments) {
       const sport = (a.event_categories as any)?.sports
       if (!sport) continue
       const key = sport.name_el
-      if (!sportMap[key]) sportMap[key] = { name_el: sport.name_el, name_en: sport.name_en, count: 0 }
+      if (!sportMap[key]) sportMap[key] = { sport_name_el: sport.name_el, sport_name_en: sport.name_en, count: 0 }
       sportMap[key].count++
     }
     setSportStats(Object.values(sportMap).sort((a, b) => b.count - a.count))

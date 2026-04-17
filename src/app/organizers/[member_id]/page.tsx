@@ -56,14 +56,14 @@ export default function OrganizerPage() {
     setTotalEvents(eventsData.length)
 
     // Sport breakdown
-    const sportMap: Record<string, { name_el: string; name_en: string; count: number }> = {}
+    const sportMap: Record<string, SportStat> = {}
     for (const ev of eventsData) {
       const cats = ev.event_categories as any[]
       for (const cat of (cats || [])) {
         const sport = cat?.sports
         if (!sport) continue
         const key = sport.name_el
-        if (!sportMap[key]) sportMap[key] = { name_el: sport.name_el, name_en: sport.name_en, count: 0 }
+        if (!sportMap[key]) sportMap[key] = { sport_name_el: sport.name_el, sport_name_en: sport.name_en, count: 0 }
         sportMap[key].count++
       }
     }
