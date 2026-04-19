@@ -114,7 +114,7 @@ export default function AttendancePage() {
             message_en: `You were marked absent from "${event.title_el}" with ${r.dogs?.name}. Please cancel in advance if you cannot attend.`,
             metadata: { event_id: id, dog_id: r.dog_id },
           }),
-          supabase.rpc('increment_no_show', { user_id_input: r.owner_id }),
+         supabase.rpc('increment_no_show', { user_id_input: r.owner_id, event_id_input: id, dog_id_input: r.dog_id }),
         ])
       ))
     }
