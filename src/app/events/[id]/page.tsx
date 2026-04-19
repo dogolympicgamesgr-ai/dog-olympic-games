@@ -31,6 +31,7 @@ export default function EventDetailPage() {
   // Assignments
   const [assignments, setAssignments] = useState<any[]>([])
   const [availableJudges, setAvailableJudges] = useState<any[]>([])
+  const [judgeQualifications, setJudgeQualifications] = useState<any[]>([]) // flat list of all quals
   const [availableDecoys, setAvailableDecoys] = useState<any[]>([])
   const [invitingRole, setInvitingRole] = useState<{ role: 'judge' | 'decoy', categoryId: string | null } | null>(null)
   const [selectedInviteUser, setSelectedInviteUser] = useState('')
@@ -41,26 +42,23 @@ export default function EventDetailPage() {
   const [allRegistrations, setAllRegistrations] = useState<any[]>([])
   const [approvedResults, setApprovedResults] = useState<any[]>([])
 
-  useEffect(() => {
-    if (id) load(id as string)
-  }, [id])
+  useEffect(() => { if (id) load(id as string) }, [id])
 
   async function load(eventId: string) {
     const [eventRes, sessionRes] = await Promise.all([
       supabase
         .from('events')
-.select(`*, event_categories(
-  id, title_el, title_en, required_foundation, required_sport_level,
-  max_participants, is_championship,
-  sports(name_el, name_en, is_foundation)
-)`)
+        .select(`*, event_categories(
+          id, title_el, title_en, required_foundation, required_sport_level,
+          max_participants, is_championship,
+          sports(id, name_el, name_en, is_foundation)
+        )`)
         .eq('id', eventId)
         .single(),
       fetch('/auth/session').then(r => r.json())
     ])
 
     if (!eventRes.data) { router.push('/events'); return }
-
     setEvent(eventRes.data)
     setCategories(eventRes.data.event_categories || [])
     setSession(sessionRes)
@@ -85,7 +83,6 @@ export default function EventDetailPage() {
       setUserDogs(dogsRes.data || [])
       setRegistrations(regsRes.data || [])
 
-      // Load all registrations for participants list
       const eventStatus = eventRes.data.status
       if (eventStatus === 'approved' || eventStatus === 'completed' || eventStatus === 'results_approved') {
         await loadAllRegistrations(eventId, eventRes.data.event_categories || [])
@@ -96,7 +93,6 @@ export default function EventDetailPage() {
     setLoading(false)
   }
 
-  // CHANGE: Added no_show_count to profiles query
   async function loadAllRegistrations(eventId: string, cats: any[]) {
     const catIds = cats.map((c: any) => c.id)
     if (catIds.length === 0) return
@@ -129,7 +125,41 @@ export default function EventDetailPage() {
       ])
       setAvailableJudges(judgeRoles.data || [])
       setAvailableDecoys(decoyRoles.data || [])
+
+      // Load all judge qualifications so the invite dropdown can filter
+      const judgeIds = (judgeRoles.data || []).map((j: any) => j.user_id)
+      if (judgeIds.length > 0) {
+        const { data: quals } = await supabase
+          .from('judge_qualifications')
+          .select('*')
+          .in('judge_user_id', judgeIds)
+        setJudgeQualifications(quals || [])
+      }
     }
+  }
+
+  // Returns judges qualified for a given category
+  // Foundation sport: judge must have a qualification row for that sport (max_sublevel is null/ignored)
+  // Discipline sport: judge must have a qualification row for that sport AND max_sublevel >= category's sublevel
+  function getQualifiedJudges(categoryId: string | null) {
+    if (!categoryId) return availableJudges // decoy invite — no filtering
+
+    const cat = categories.find(c => c.id === categoryId)
+    if (!cat) return availableJudges
+
+    const sportId = cat.sports?.id
+    const isFoundation = cat.sports?.is_foundation
+    const requiredSublevel = cat.required_sport_level ? parseInt(cat.required_sport_level) : null
+
+    return availableJudges.filter(judge => {
+      const qual = judgeQualifications.find(
+        q => q.judge_user_id === judge.user_id && q.sport_id === sportId
+      )
+      if (!qual) return false
+      if (isFoundation) return true // foundation: just needs the qual
+      if (requiredSublevel === null) return true // no sublevel requirement
+      return qual.max_sublevel >= requiredSublevel
+    })
   }
 
   async function handleInvite() {
@@ -183,7 +213,29 @@ export default function EventDetailPage() {
 
   async function handleRespondAssignment(assignmentId: string, newStatus: 'accepted' | 'declined') {
     setAssignLoading(true)
+
     await supabase.from('event_assignments').update({ status: newStatus }).eq('id', assignmentId)
+
+    // Notify organizer of the response
+    const assignment = assignments.find(a => a.id === assignmentId)
+    if (assignment && event?.created_by) {
+      const responderName = session?.profile?.full_name || 'Someone'
+      const roleLabel = assignment.role === 'judge' ? 'Κριτής' : 'Δόλωμα'
+      const roleLabelEn = assignment.role === 'judge' ? 'Judge' : 'Decoy'
+      const statusEl = newStatus === 'accepted' ? 'αποδέχθηκε' : 'αρνήθηκε'
+      const statusEn = newStatus === 'accepted' ? 'accepted' : 'declined'
+
+      await supabase.from('notifications').insert({
+        user_id: event.created_by,
+        type: 'assignment_response',
+        title_el: `${roleLabel} ${statusEl} την πρόσκληση`,
+        title_en: `${roleLabelEn} ${statusEn} the invitation`,
+        message_el: `${responderName} ${statusEl} την πρόσκληση ως ${roleLabel} για τον αγώνα "${event.title_el}".`,
+        message_en: `${responderName} ${statusEn} the invitation as ${roleLabelEn} for event "${event.title_el}".`,
+        metadata: { event_id: id, role: assignment.role },
+      })
+    }
+
     await loadAssignments(id as string, session)
     setAssignLoading(false)
   }
@@ -193,8 +245,10 @@ export default function EventDetailPage() {
     setRegLoading(true)
     setRegMsg(null)
     const { error } = await supabase.from('event_registrations').insert({
-      category_id: catId, dog_id: selectedDog,
-      owner_id: session.user.id, status: 'confirmed',
+      category_id: catId,
+      dog_id: selectedDog,
+      owner_id: session.user.id,
+      status: 'confirmed',
     })
     if (error) {
       setRegMsg({ type: 'error', text: t('Σφάλμα εγγραφής. Ίσως είστε ήδη εγγεγραμμένοι.', 'Registration error. You may already be registered.') })
@@ -218,7 +272,6 @@ export default function EventDetailPage() {
     setRegLoading(false)
   }
 
-  // ── helpers ──────────────────────────────────────────────
   function formatDate(iso: string) {
     if (!iso) return '—'
     const d = new Date(iso)
@@ -229,6 +282,7 @@ export default function EventDetailPage() {
     const mins = String(d.getMinutes()).padStart(2, '0')
     return `${day}/${month}/${year} ${hours}:${mins}`
   }
+
   function isUpcoming(iso: string) { return iso && new Date(iso) > new Date() }
   function registrationOpen(ev: any) {
     if (!ev.registration_deadline) return isUpcoming(ev.event_date)
@@ -236,18 +290,12 @@ export default function EventDetailPage() {
   }
   function getUserRegForCat(catId: string) { return registrations.find(r => r.category_id === catId) }
 
-  const assignStatusColor = (s: string) => {
-    if (s === 'accepted') return '#7ef7a0'
-    if (s === 'declined') return '#f77e7e'
-    return 'var(--accent)'
-  }
-  const assignStatusLabel = (s: string) => {
-    if (s === 'accepted') return t('Αποδέχθηκε', 'Accepted')
-    if (s === 'declined') return t('Αρνήθηκε', 'Declined')
-    return t('Σε αναμονή', 'Pending')
-  }
+  const assignStatusColor = (s: string) => s === 'accepted' ? '#7ef7a0' : s === 'declined' ? '#f77e7e' : 'var(--accent)'
+  const assignStatusLabel = (s: string) =>
+    s === 'accepted' ? t('Αποδέχθηκε', 'Accepted') :
+    s === 'declined' ? t('Αρνήθηκε', 'Declined') :
+    t('Σε αναμονή', 'Pending')
 
-  // ── guards ───────────────────────────────────────────────
   if (loading) return (
     <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p style={{ color: 'var(--accent)', fontFamily: 'Bebas Neue, sans-serif', fontSize: '2rem' }}>
@@ -255,6 +303,7 @@ export default function EventDetailPage() {
       </p>
     </div>
   )
+
   if (!event) return (
     <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p style={{ color: 'var(--text-secondary)' }}>{t('Ο αγώνας δεν βρέθηκε', 'Event not found')}</p>
@@ -268,139 +317,69 @@ export default function EventDetailPage() {
   const isLoggedIn = !!session?.user
   const isOrganizerOrAdmin = session?.isAdmin || session?.roles?.includes('organizer') || session?.user?.id === event.created_by
   const isMyEvent = session?.user?.id === event.created_by
-  
-  // CHANGE 1: Add isLocked constant
   const isCompleted = event.status === 'completed' || event.status === 'results_approved'
   const isLocked = event.status === 'results_approved'
-
-  // CHANGE 2: Gate action buttons
   const canManageAttendance = (isMyEvent || session?.isAdmin) && event.status === 'approved'
   const canManageAssignments = isOrganizerOrAdmin && !isLocked
-
-  const myJudgeAssignments = assignments.filter(a =>
-    a.user_id === session?.user?.id && a.role === 'judge' && a.status === 'accepted'
-  )
+  const myJudgeAssignments = assignments.filter(a => a.user_id === session?.user?.id && a.role === 'judge' && a.status === 'accepted')
   const isAssignedJudge = myJudgeAssignments.length > 0 && isCompleted
   const canReviewResults = session?.isAdmin && isCompleted
-
   const decoyAssignments = assignments.filter(a => a.role === 'decoy')
   const judgeAssignments = assignments.filter(a => a.role === 'judge')
+  const visibleDecoys = decoyAssignments.filter(a => a.status === 'accepted' || isOrganizerOrAdmin || a.user_id === session?.user?.id)
+  const visibleJudges = judgeAssignments.filter(a => a.status === 'accepted' || isOrganizerOrAdmin || a.user_id === session?.user?.id)
+  const myPendingAssignments = assignments.filter(a => a.user_id === session?.user?.id && a.status === 'pending')
 
-  const visibleDecoys = decoyAssignments.filter(a =>
-    a.status === 'accepted' || isOrganizerOrAdmin || a.user_id === session?.user?.id
-  )
-  const visibleJudges = judgeAssignments.filter(a =>
-    a.status === 'accepted' || isOrganizerOrAdmin || a.user_id === session?.user?.id
-  )
-
-  const myPendingAssignments = assignments.filter(a =>
-    a.user_id === session?.user?.id && a.status === 'pending'
-  )
-
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--bg-card)',
-    border: '1px solid var(--border)',
-    borderRadius: '14px',
-    padding: '1.25rem',
-    marginBottom: '1rem',
-  }
-  const sectionTitle: React.CSSProperties = {
-    fontFamily: 'Bebas Neue, sans-serif',
-    fontSize: '1rem',
-    color: 'var(--accent)',
-    margin: '0 0 1rem',
-    letterSpacing: '0.04em',
-  }
-  const actionBtnStyle: React.CSSProperties = {
-    flex: 1,
-    border: 'none',
-    borderRadius: '10px',
-    padding: '0.85rem 1rem',
-    fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: 'Bebas Neue, sans-serif',
-    fontSize: '1rem',
-    letterSpacing: '0.04em',
-    textAlign: 'center',
-  }
+  const cardStyle: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '1.25rem', marginBottom: '1rem' }
+  const sectionTitle: React.CSSProperties = { fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: 'var(--accent)', margin: '0 0 1rem', letterSpacing: '0.04em' }
+  const actionBtnStyle: React.CSSProperties = { flex: 1, border: 'none', borderRadius: '10px', padding: '0.85rem 1rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', letterSpacing: '0.04em', textAlign: 'center' }
 
   return (
-    <main style={{
-      minHeight: '100vh', background: 'var(--bg)',
-      paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem'
-    }}>
-
+    <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       {/* Lightbox */}
       {lightboxOpen && event.banner_url && (
-        <div onClick={() => setLightboxOpen(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 9999, cursor: 'zoom-out'
-        }}>
+        <div onClick={() => setLightboxOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, cursor: 'zoom-out' }}>
           <img src={event.banner_url} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }} />
         </div>
       )}
 
       {/* Banner */}
       {event.banner_url && (
-        <div onClick={() => setLightboxOpen(true)} style={{
-          width: '100%', height: '240px', overflow: 'hidden',
-          cursor: 'zoom-in', position: 'relative',
-        }}>
+        <div onClick={() => setLightboxOpen(true)} style={{ width: '100%', height: '240px', overflow: 'hidden', cursor: 'zoom-in', position: 'relative' }}>
           <img src={event.banner_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 40%, var(--bg) 100%)' }} />
         </div>
       )}
 
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '0 1.5rem' }}>
+        <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', marginBottom: '1rem', marginTop: event.banner_url ? '-1rem' : '0', padding: 0, position: 'relative', zIndex: 1 }}>←</button>
 
-        <button onClick={() => router.back()} style={{
-          background: 'none', border: 'none', color: 'var(--text-secondary)',
-          cursor: 'pointer', fontSize: '1.2rem',
-          marginBottom: '1rem', marginTop: event.banner_url ? '-1rem' : '0',
-          padding: 0, position: 'relative', zIndex: 1
-        }}>←</button>
-
-        {/* Status badges - CHANGE 3: Updated status badge */}
+        {/* Status badge */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-          <span style={{
-            fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.7rem', borderRadius: '99px',
-            background: isLocked ? 'rgba(212,175,55,0.15)' : isCompleted ? 'rgba(120,120,255,0.15)' : upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg-card)',
-            color: isLocked ? 'var(--accent)' : isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--text-secondary)',
-            border: `1px solid ${isLocked ? 'var(--accent)' : isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--border)'}`,
-          }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.7rem', borderRadius: '99px', background: isLocked ? 'rgba(212,175,55,0.15)' : isCompleted ? 'rgba(120,120,255,0.15)' : upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg-card)', color: isLocked ? 'var(--accent)' : isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--text-secondary)', border: `1px solid ${isLocked ? 'var(--accent)' : isCompleted ? '#a0a0ff' : upcoming ? 'var(--accent)' : 'var(--border)'}` }}>
             {isLocked ? t('🔒 Αποτελέσματα Εγκρίθηκαν', '🔒 Results Approved') : isCompleted ? t('✅ Ολοκληρώθηκε', '✅ Completed') : upcoming ? t('Επερχόμενος', 'Upcoming') : t('Παρελθόν', 'Past')}
           </span>
         </div>
 
-        <h1 style={{
-          fontFamily: 'Bebas Neue, sans-serif', fontSize: '2.4rem',
-          letterSpacing: '0.05em', color: 'var(--text-primary)', margin: '0 0 1.25rem'
-        }}>
+        <h1 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '2.4rem', letterSpacing: '0.05em', color: 'var(--text-primary)', margin: '0 0 1.25rem' }}>
           🏆 {title}
         </h1>
 
-        {/* ── Role-based action buttons ── */}
+        {/* Action buttons */}
         {(canManageAttendance || isAssignedJudge || canReviewResults) && (
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             {canManageAttendance && (
-              <button
-                onClick={() => router.push(`/events/${id}/attendance`)}
-                style={{ ...actionBtnStyle, background: 'var(--accent)', color: 'var(--bg)' }}>
+              <button onClick={() => router.push(`/events/${id}/attendance`)} style={{ ...actionBtnStyle, background: 'var(--accent)', color: 'var(--bg)' }}>
                 📋 {t('Παρουσίες & Κλείσιμο', 'Attendance & Close')}
               </button>
             )}
             {isAssignedJudge && (
-              <button
-                onClick={() => router.push(`/events/${id}/score`)}
-                style={{ ...actionBtnStyle, background: 'rgba(212,175,55,0.15)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
+              <button onClick={() => router.push(`/events/${id}/score`)} style={{ ...actionBtnStyle, background: 'rgba(212,175,55,0.15)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
                 ⚖️ {t('Βαθμολόγηση', 'Score Event')}
               </button>
             )}
             {canReviewResults && (
-              <button
-                onClick={() => router.push(`/events/${id}/results`)}
-                style={{ ...actionBtnStyle, background: 'rgba(120,120,255,0.15)', color: '#a0a0ff', border: '1px solid #a0a0ff' }}>
+              <button onClick={() => router.push(`/events/${id}/results`)} style={{ ...actionBtnStyle, background: 'rgba(120,120,255,0.15)', color: '#a0a0ff', border: '1px solid #a0a0ff' }}>
                 ✅ {t('Αποτελέσματα', 'Review Results')}
               </button>
             )}
@@ -458,7 +437,7 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* My pending assignment requests */}
+        {/* Pending invitations for current user */}
         {myPendingAssignments.length > 0 && (
           <div style={{ ...cardStyle, border: '1px solid var(--accent)' }}>
             <p style={sectionTitle}>🔔 {t('Εκκρεμείς Προσκλήσεις', 'Pending Invitations')}</p>
@@ -466,23 +445,17 @@ export default function EventDetailPage() {
               {myPendingAssignments.map((a: any) => {
                 const cat = a.category_id ? categories.find(c => c.id === a.category_id) : null
                 return (
-                  <div key={a.id} style={{
-                    background: 'var(--bg)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '0.85rem 1rem',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem'
-                  }}>
+                  <div key={a.id} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
                       {a.role === 'judge' ? '⚖️ ' : '🎯 '}
                       {a.role === 'judge' ? t('Κριτής', 'Judge') : t('Δόλωμα', 'Decoy')}
                       {cat && ` — ${t(cat.title_el, cat.title_en || cat.title_el)}`}
                     </p>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button onClick={() => handleRespondAssignment(a.id, 'accepted')} disabled={assignLoading}
-                        style={{ background: '#7ef7a033', border: '1px solid #7ef7a0', borderRadius: '6px', padding: '0.3rem 0.75rem', color: '#7ef7a0', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif', fontWeight: 700 }}>
+                      <button onClick={() => handleRespondAssignment(a.id, 'accepted')} disabled={assignLoading} style={{ background: '#7ef7a033', border: '1px solid #7ef7a0', borderRadius: '6px', padding: '0.3rem 0.75rem', color: '#7ef7a0', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif', fontWeight: 700 }}>
                         {t('Αποδοχή', 'Accept')}
                       </button>
-                      <button onClick={() => handleRespondAssignment(a.id, 'declined')} disabled={assignLoading}
-                        style={{ background: '#f77e7e33', border: '1px solid #f77e7e', borderRadius: '6px', padding: '0.3rem 0.75rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>
+                      <button onClick={() => handleRespondAssignment(a.id, 'declined')} disabled={assignLoading} style={{ background: '#f77e7e33', border: '1px solid #f77e7e', borderRadius: '6px', padding: '0.3rem 0.75rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>
                         {t('Άρνηση', 'Decline')}
                       </button>
                     </div>
@@ -497,12 +470,7 @@ export default function EventDetailPage() {
         <div style={cardStyle}>
           <p style={sectionTitle}>{t('Κατηγορίες', 'Categories')}</p>
           {regMsg && (
-            <div style={{
-              background: regMsg.type === 'success' ? 'rgba(0,200,100,0.1)' : 'rgba(220,50,50,0.1)',
-              border: `1px solid ${regMsg.type === 'success' ? 'rgba(0,200,100,0.3)' : 'rgba(220,50,50,0.3)'}`,
-              borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem',
-              color: regMsg.type === 'success' ? '#00c864' : '#dc3232', fontSize: '0.85rem', fontWeight: 600
-            }}>
+            <div style={{ background: regMsg.type === 'success' ? 'rgba(0,200,100,0.1)' : 'rgba(220,50,50,0.1)', border: `1px solid ${regMsg.type === 'success' ? 'rgba(0,200,100,0.3)' : 'rgba(220,50,50,0.3)'}`, borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', color: regMsg.type === 'success' ? '#00c864' : '#dc3232', fontSize: '0.85rem', fontWeight: 600 }}>
               {regMsg.text}
             </div>
           )}
@@ -513,6 +481,8 @@ export default function EventDetailPage() {
               const sportName = t(cat.sports?.name_el, cat.sports?.name_en || cat.sports?.name_el)
               const catJudges = visibleJudges.filter(a => a.category_id === cat.id)
               const isInvitingJudgeHere = invitingRole?.role === 'judge' && invitingRole?.categoryId === cat.id
+              const qualifiedJudges = isInvitingJudgeHere ? getQualifiedJudges(cat.id) : []
+              const alreadyInvitedIds = new Set(judgeAssignments.filter(a => a.category_id === cat.id).map(a => a.user_id))
 
               return (
                 <div key={cat.id} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
@@ -529,17 +499,11 @@ export default function EventDetailPage() {
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      {/* CHANGE 4: Gate + Judge button with canManageAssignments */}
                       {canManageAssignments && (
-                        <button onClick={() => {
-                          setInvitingRole(isInvitingJudgeHere ? null : { role: 'judge', categoryId: cat.id })
-                          setSelectedInviteUser(''); setAssignMsg(null)
-                        }} style={{
-                          background: isInvitingJudgeHere ? 'var(--bg-card)' : 'var(--bg)',
-                          border: '1px solid var(--border)', borderRadius: '8px',
-                          padding: '0.35rem 0.75rem', color: 'var(--text-secondary)',
-                          cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem',
-                        }}>
+                        <button
+                          onClick={() => { setInvitingRole(isInvitingJudgeHere ? null : { role: 'judge', categoryId: cat.id }); setSelectedInviteUser(''); setAssignMsg(null) }}
+                          style={{ background: isInvitingJudgeHere ? 'var(--bg-card)' : 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.35rem 0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem' }}
+                        >
                           ⚖️ {t('+ Κριτής', '+ Judge')}
                         </button>
                       )}
@@ -550,25 +514,12 @@ export default function EventDetailPage() {
                             const catTitle = t(cat.title_el, cat.title_en || cat.title_el)
                             const canCancel = userReg.status === 'confirmed' && event.status !== 'completed' && event.status !== 'cancelled' && event.status !== 'results_approved' && new Date(event.event_date) > new Date()
                             return (
-                              <div style={{
-                                background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)',
-                                borderRadius: '10px', padding: '0.6rem 0.85rem',
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                gap: '0.75rem', flexWrap: 'wrap',
-                              }}>
+                              <div style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)', borderRadius: '10px', padding: '0.6rem 0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                                 <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
-                                  🐕 {t(
-                                    `Έχεις δηλώσει συμμετοχή με τον/την ${dogName} στην κατηγορία ${catTitle}`,
-                                    `You registered ${dogName} for ${catTitle}`
-                                  )}
+                                  🐕 {t(`Έχεις δηλώσει συμμετοχή με τον/την ${dogName} στην κατηγορία ${catTitle}`, `You registered ${dogName} for ${catTitle}`)}
                                 </p>
                                 {canCancel && (
-                                  <button onClick={() => handleCancelReg(userReg.id)} disabled={regLoading}
-                                    style={{
-                                      background: 'none', border: '1px solid #f77e7e', borderRadius: '6px',
-                                      padding: '0.3rem 0.65rem', color: '#f77e7e', cursor: 'pointer',
-                                      fontSize: '0.75rem', fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap',
-                                    }}>
+                                  <button onClick={() => handleCancelReg(userReg.id)} disabled={regLoading} style={{ background: 'none', border: '1px solid #f77e7e', borderRadius: '6px', padding: '0.3rem 0.65rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap' }}>
                                     {t('Ακύρωση Συμμετοχής', 'Cancel Registration')}
                                   </button>
                                 )}
@@ -578,13 +529,10 @@ export default function EventDetailPage() {
                         </div>
                       ) : (
                         isLoggedIn && regOpen && upcoming && !isLocked && (
-                          <button onClick={() => { setRegisteringCat(isRegistering ? null : cat.id); setSelectedDog(''); setRegMsg(null) }}
-                            style={{
-                              background: isRegistering ? 'var(--bg-card)' : 'var(--accent)',
-                              border: 'none', borderRadius: '8px', padding: '0.4rem 0.9rem',
-                              color: isRegistering ? 'var(--text-secondary)' : 'var(--bg)',
-                              fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.8rem',
-                            }}>
+                          <button
+                            onClick={() => { setRegisteringCat(isRegistering ? null : cat.id); setSelectedDog(''); setRegMsg(null) }}
+                            style={{ background: isRegistering ? 'var(--bg-card)' : 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.4rem 0.9rem', color: isRegistering ? 'var(--text-secondary)' : 'var(--bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.8rem' }}
+                          >
                             {isRegistering ? t('Άκυρο', 'Cancel') : t('Εγγραφή', 'Register')}
                           </button>
                         )
@@ -592,34 +540,21 @@ export default function EventDetailPage() {
                     </div>
                   </div>
 
-                  {/* Judges for this category */}
+                  {/* Judges assigned to this category */}
                   {catJudges.length > 0 && (
                     <div style={{ marginTop: '0.65rem', paddingTop: '0.65rem', borderTop: '1px solid var(--border)' }}>
-                      <p style={{ margin: '0 0 0.4rem', fontSize: '0.72rem', color: 'var(--text-secondary)', letterSpacing: '0.03em' }}>
-                        ⚖️ {t('Κριτές', 'Judges')}
-                      </p>
+                      <p style={{ margin: '0 0 0.4rem', fontSize: '0.72rem', color: 'var(--text-secondary)', letterSpacing: '0.03em' }}>⚖️ {t('Κριτές', 'Judges')}</p>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                         {catJudges.map((a: any) => (
-                          <div key={a.id} style={{
-                            display: 'flex', alignItems: 'center', gap: '0.4rem',
-                            background: 'var(--bg-card)', border: `1px solid ${assignStatusColor(a.status)}44`,
-                            borderRadius: '99px', padding: '0.25rem 0.6rem 0.25rem 0.3rem',
-                          }}>
+                          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-card)', border: `1px solid ${assignStatusColor(a.status)}44`, borderRadius: '99px', padding: '0.25rem 0.6rem 0.25rem 0.3rem' }}>
                             {a.profiles?.avatar_url
                               ? <img src={a.profiles.avatar_url} style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
-                              : <span style={{ fontSize: '0.8rem' }}>👤</span>
-                            }
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-                              {a.profiles?.full_name}
-                            </span>
-                            {/* CHANGE 5: Gate remove assignment button */}
+                              : <span style={{ fontSize: '0.8rem' }}>👤</span>}
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>{a.profiles?.full_name}</span>
                             {canManageAssignments && (
                               <>
-                                <span style={{ fontSize: '0.65rem', color: assignStatusColor(a.status) }}>
-                                  {assignStatusLabel(a.status)}
-                                </span>
-                                <button onClick={() => handleRemoveAssignment(a.id)} disabled={assignLoading}
-                                  style={{ background: 'none', border: 'none', color: '#f77e7e', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0 0 0.2rem', lineHeight: 1 }}>✕</button>
+                                <span style={{ fontSize: '0.65rem', color: assignStatusColor(a.status) }}>{assignStatusLabel(a.status)}</span>
+                                <button onClick={() => handleRemoveAssignment(a.id)} disabled={assignLoading} style={{ background: 'none', border: 'none', color: '#f77e7e', cursor: 'pointer', fontSize: '0.7rem', padding: '0 0 0 0.2rem', lineHeight: 1 }}>✕</button>
                               </>
                             )}
                           </div>
@@ -628,48 +563,57 @@ export default function EventDetailPage() {
                     </div>
                   )}
 
-                  {/* Invite judge inline form */}
+                  {/* Invite judge form — with qualification filter */}
                   {isInvitingJudgeHere && (
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
-                      {assignMsg && (
-                        <p style={{ fontSize: '0.8rem', color: assignMsg.type === 'success' ? '#00c864' : '#dc3232', marginBottom: '0.5rem' }}>
-                          {assignMsg.text}
-                        </p>
-                      )}
+                      {assignMsg && <p style={{ fontSize: '0.8rem', color: assignMsg.type === 'success' ? '#00c864' : '#dc3232', marginBottom: '0.5rem' }}>{assignMsg.text}</p>}
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)}
-                          style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
-                          <option value="">{t('Επίλεξε κριτή...', 'Select judge...')}</option>
-                          {availableJudges.map((j: any) => (
-                            <option key={j.user_id} value={j.user_id}>{j.profiles?.full_name} #{j.profiles?.member_id}</option>
-                          ))}
+                        <select
+                          value={selectedInviteUser}
+                          onChange={e => setSelectedInviteUser(e.target.value)}
+                          style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">
+                            {qualifiedJudges.length === 0
+                              ? t('Κανένας κριτής δεν είναι κατάλληλος', 'No qualified judges available')
+                              : t('Επίλεξε κριτή...', 'Select judge...')}
+                          </option>
+                          {qualifiedJudges
+                            .filter(j => !alreadyInvitedIds.has(j.user_id))
+                            .map((j: any) => (
+                              <option key={j.user_id} value={j.user_id}>
+                                {j.profiles?.full_name} #{j.profiles?.member_id}
+                              </option>
+                            ))}
                         </select>
-                        <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading}
-                          style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
+                        <button
+                          onClick={handleInvite}
+                          disabled={!selectedInviteUser || assignLoading || qualifiedJudges.length === 0}
+                          style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}
+                        >
                           {assignLoading ? '...' : t('Αποστολή', 'Send')}
                         </button>
                       </div>
+                      {qualifiedJudges.length === 0 && (
+                        <p style={{ fontSize: '0.75rem', color: '#f7c97e', marginTop: '0.4rem' }}>
+                          {t('Δεν υπάρχουν κριτές με τα απαραίτητα προσόντα για αυτή την κατηγορία.', 'No judges have the required qualifications for this category.')}
+                        </p>
+                      )}
                     </div>
                   )}
 
-                  {/* Registration dog picker */}
+                  {/* Registration picker */}
                   {isRegistering && !userReg && (
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
                       {userDogs.length === 0 ? (
-                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          {t('Δεν έχεις σκύλους στο προφίλ σου.', 'You have no dogs on your profile.')}
-                        </p>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t('Δεν έχεις σκύλους στο προφίλ σου.', 'You have no dogs on your profile.')}</p>
                       ) : (
                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <select value={selectedDog} onChange={e => setSelectedDog(e.target.value)}
-                            style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.55rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
+                          <select value={selectedDog} onChange={e => setSelectedDog(e.target.value)} style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.55rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
                             <option value="">{t('Επίλεξε σκύλο...', 'Select dog...')}</option>
-                            {userDogs.map(dog => (
-                              <option key={dog.id} value={dog.id}>{dog.name} ({dog.dog_id})</option>
-                            ))}
+                            {userDogs.map(dog => <option key={dog.id} value={dog.id}>{dog.name} ({dog.dog_id})</option>)}
                           </select>
-                          <button onClick={() => handleRegister(cat.id)} disabled={!selectedDog || regLoading}
-                            style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.55rem 1.1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedDog ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedDog ? 1 : 0.6 }}>
+                          <button onClick={() => handleRegister(cat.id)} disabled={!selectedDog || regLoading} style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.55rem 1.1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedDog ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedDog ? 1 : 0.6 }}>
                             {regLoading ? '...' : t('Υποβολή', 'Submit')}
                           </button>
                         </div>
@@ -687,14 +631,15 @@ export default function EventDetailPage() {
           )}
         </div>
 
-        {/* Decoys section */}
+        {/* Decoys */}
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <p style={{ ...sectionTitle, margin: 0 }}>🎯 {t('Δόλωμα', 'Decoys')}</p>
-            {/* CHANGE 6: Gate decoys invite button */}
             {canManageAssignments && (
-              <button onClick={() => { setInvitingRole(invitingRole?.role === 'decoy' ? null : { role: 'decoy', categoryId: null }); setSelectedInviteUser(''); setAssignMsg(null) }}
-                style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.35rem 0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem' }}>
+              <button
+                onClick={() => { setInvitingRole(invitingRole?.role === 'decoy' ? null : { role: 'decoy', categoryId: null }); setSelectedInviteUser(''); setAssignMsg(null) }}
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.35rem 0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem' }}
+              >
                 + {t('Πρόσκληση', 'Invite')}
               </button>
             )}
@@ -703,65 +648,48 @@ export default function EventDetailPage() {
             <div style={{ marginBottom: '1rem' }}>
               {assignMsg && <p style={{ fontSize: '0.8rem', color: assignMsg.type === 'success' ? '#00c864' : '#dc3232', marginBottom: '0.5rem' }}>{assignMsg.text}</p>}
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)}
-                  style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
+                <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)} style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
                   <option value="">{t('Επίλεξε δόλωμα...', 'Select decoy...')}</option>
-                  {availableDecoys.map((d: any) => (
-                    <option key={d.user_id} value={d.user_id}>{d.profiles?.full_name} #{d.profiles?.member_id}</option>
-                  ))}
+                  {availableDecoys.map((d: any) => <option key={d.user_id} value={d.user_id}>{d.profiles?.full_name} #{d.profiles?.member_id}</option>)}
                 </select>
-                <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading}
-                  style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
+                <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading} style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
                   {assignLoading ? '...' : t('Αποστολή', 'Send')}
                 </button>
               </div>
             </div>
           )}
-          {visibleDecoys.length === 0 && (
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              {t('Δεν έχει οριστεί δόλωμα ακόμα', 'No decoy assigned yet')}
-            </p>
-          )}
+          {visibleDecoys.length === 0 && <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{t('Δεν έχει οριστεί δόλωμα ακόμα', 'No decoy assigned yet')}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {visibleDecoys.map((a: any) => (
               <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)', border: `1px solid ${assignStatusColor(a.status)}44`, borderRadius: '10px', padding: '0.65rem 1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', cursor: 'pointer' }} onClick={() => router.push(`/profile/${a.profiles?.member_id}`)}>
-                  {a.profiles?.avatar_url
-                    ? <img src={a.profiles.avatar_url} style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} />
-                    : <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>👤</div>
-                  }
+                  {a.profiles?.avatar_url ? <img src={a.profiles.avatar_url} style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} /> : <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>👤</div>}
                   <div>
                     <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem' }}>{a.profiles?.full_name}</p>
                     <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-secondary)' }}>#{a.profiles?.member_id}</p>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {/* CHANGE 7: Gate decoy remove buttons */}
-                  {canManageAssignments && (
-                    <>
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '99px', color: assignStatusColor(a.status), background: `${assignStatusColor(a.status)}22`, border: `1px solid ${assignStatusColor(a.status)}` }}>
-                        {assignStatusLabel(a.status)}
-                      </span>
-                      <button onClick={() => handleRemoveAssignment(a.id)} disabled={assignLoading}
-                        style={{ background: 'none', border: '1px solid #f77e7e44', borderRadius: '6px', padding: '0.2rem 0.5rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'Outfit, sans-serif' }}>
-                        {t('Αφαίρεση', 'Remove')}
-                      </button>
-                    </>
-                  )}
-                </div>
+                {canManageAssignments && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '99px', color: assignStatusColor(a.status), background: `${assignStatusColor(a.status)}22`, border: `1px solid ${assignStatusColor(a.status)}` }}>
+                      {assignStatusLabel(a.status)}
+                    </span>
+                    <button onClick={() => handleRemoveAssignment(a.id)} disabled={assignLoading} style={{ background: 'none', border: '1px solid #f77e7e44', borderRadius: '6px', padding: '0.2rem 0.5rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'Outfit, sans-serif' }}>
+                      {t('Αφαίρεση', 'Remove')}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Participants List */}
+        {/* Participants */}
         {isLoggedIn && (event.status === 'approved' || event.status === 'completed' || event.status === 'results_approved') && (
           <div style={cardStyle}>
             <p style={sectionTitle}>👥 {t('Συμμετέχοντες', 'Participants')}</p>
             {allRegistrations.length === 0 ? (
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {t('Δεν υπάρχουν εγγεγραμμένοι συμμετέχοντες ακόμα', 'No registered participants yet')}
-              </p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{t('Δεν υπάρχουν εγγεγραμμένοι συμμετέχοντες ακόμα', 'No registered participants yet')}</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {categories.map(cat => {
@@ -776,14 +704,8 @@ export default function EventDetailPage() {
                         {catRegs.map((r: any) => {
                           const result = approvedResults.find(res => res.dog_id === r.dog_id && res.category_id === cat.id)
                           return (
-                            <div key={r.id} style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              background: 'var(--bg)', borderRadius: '8px', padding: '0.5rem 0.75rem',
-                              border: `1px solid ${r.attendance_status === 'no_show' ? '#f77e7e22' : result?.passed ? '#7ef7a022' : result && !result.passed ? '#f77e7e22' : 'var(--border)'}`,
-                              flexWrap: 'wrap', gap: '0.4rem',
-                            }}>
+                            <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)', borderRadius: '8px', padding: '0.5rem 0.75rem', border: `1px solid ${r.attendance_status === 'no_show' ? '#f77e7e22' : result?.passed ? '#7ef7a022' : result && !result.passed ? '#f77e7e22' : 'var(--border)'}`, flexWrap: 'wrap', gap: '0.4rem' }}>
                               <div>
-                                {/* CHANGE 8: Add no-show badge in participants list */}
                                 <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                   {r.profiles?.full_name}
                                   <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.72rem' }}>(#{r.profiles?.member_id})</span>
@@ -797,12 +719,7 @@ export default function EventDetailPage() {
                               </div>
                               <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                 {event.status === 'completed' && (
-                                  <span style={{
-                                    fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '99px',
-                                    color: r.attendance_status === 'attended' ? '#7ef7a0' : '#f77e7e',
-                                    background: r.attendance_status === 'attended' ? '#7ef7a022' : '#f77e7e22',
-                                    border: `1px solid ${r.attendance_status === 'attended' ? '#7ef7a044' : '#f77e7e44'}`,
-                                  }}>
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.55rem', borderRadius: '99px', color: r.attendance_status === 'attended' ? '#7ef7a0' : '#f77e7e', background: r.attendance_status === 'attended' ? '#7ef7a022' : '#f77e7e22', border: `1px solid ${r.attendance_status === 'attended' ? '#7ef7a044' : '#f77e7e44'}` }}>
                                     {r.attendance_status === 'attended' ? t('Παρών', 'Present') : t('Απών', 'Absent')}
                                   </span>
                                 )}
@@ -853,15 +770,8 @@ export default function EventDetailPage() {
 
         {/* Organizer */}
         {organizer && (
-          <div onClick={() => router.push(`/profile/${organizer.member_id}`)}
-            style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: '0.85rem', cursor: 'pointer' }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-          >
-            {organizer.avatar_url
-              ? <img src={organizer.avatar_url} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-              : <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>👤</div>
-            }
+          <div onClick={() => router.push(`/profile/${organizer.member_id}`)} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: '0.85rem', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')} onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+            {organizer.avatar_url ? <img src={organizer.avatar_url} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} /> : <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>👤</div>}
             <div>
               <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{t('Διοργανωτής', 'Organizer')}</p>
               <p style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.92rem' }}>{organizer.full_name}</p>
@@ -869,7 +779,6 @@ export default function EventDetailPage() {
             </div>
           </div>
         )}
-
       </div>
     </main>
   )
