@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 
-const MapView = dynamic(() => import('@/components/MapView'), { ssr: false })
+const MultiMarkerMap = dynamic(() => import('@/components/MultiMarkerMap'), { ssr: false })
 
 type EventFilter = 'pending' | 'approved' | 'completed' | 'results_approved' | 'cancelled'
 
@@ -62,8 +62,12 @@ export default function AdminEvents() {
           type: isApproved ? 'event_approved' : 'event_rejected',
           title_el: isApproved ? 'Ο Αγώνας Εγκρίθηκε' : 'Ο Αγώνας Απορρίφθηκε',
           title_en: isApproved ? 'Event Approved' : 'Event Rejected',
-          message_el: isApproved ? `Ο αγώνας "${event.title_el}" εγκρίθηκε και είναι πλέον δημόσιος.` : `Ο αγώνας "${event.title_el}" απορρίφθηκε από τον διαχειριστή.`,
-          message_en: isApproved ? `Your event "${event.title_el}" has been approved and is now public.` : `Your event "${event.title_el}" was rejected by the admin.`,
+          message_el: isApproved
+            ? `Ο αγώνας "${event.title_el}" εγκρίθηκε και είναι πλέον δημόσιος.`
+            : `Ο αγώνας "${event.title_el}" απορρίφθηκε από τον διαχειριστή.`,
+          message_en: isApproved
+            ? `Your event "${event.title_el}" has been approved and is now public.`
+            : `Your event "${event.title_el}" was rejected by the admin.`,
           metadata: { event_id: id },
         })
       }
@@ -101,7 +105,8 @@ export default function AdminEvents() {
     s === 'approved' ? '#7ef7a0' :
     s === 'completed' ? '#f7c97e' :
     s === 'results_approved' ? '#7eb8f7' :
-    s === 'cancelled' ? '#f77e7e' : 'var(--accent)'
+    s === 'cancelled' ? '#f77e7e' :
+    'var(--accent)'
 
   const statusLabel = (s: string) =>
     s === 'completed' ? 'Pending Results' :
@@ -147,10 +152,10 @@ export default function AdminEvents() {
           </button>
         ))}
 
-        {/* Map toggle — only for results_approved */}
+        {/* Map toggle — only for results_approved tab when events have coords */}
         {filter === 'results_approved' && eventsWithCoords.length > 0 && (
           <button
-            onClick={() => setShowMap(!showMap)}
+            onClick={() => setShowMap(v => !v)}
             style={{ marginLeft: 'auto', background: showMap ? 'var(--accent)' : 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 1rem', color: showMap ? 'var(--bg)' : 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontWeight: 600 }}
           >
             🗺️ {showMap ? 'Hide Map' : 'Show Map'}
@@ -158,24 +163,19 @@ export default function AdminEvents() {
         )}
       </div>
 
-      {/* Multi-pin map */}
-      {showMap && filter === 'results_approved' && (
-        <div style={{ marginBottom: '1.5rem', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)', height: '360px', position: 'relative' }}>
-          {eventsWithCoords.map((event, i) => (
-            <div key={event.id} style={{ position: 'absolute', width: '100%', height: '100%', zIndex: i === 0 ? 1 : 0 }}>
-              {i === 0 && <MapView lat={event.lat} lng={event.lng} label={event.title_el} />}
-            </div>
-          ))}
-          <div style={{ position: 'absolute', bottom: '0.75rem', left: '0.75rem', zIndex: 999, display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '200px', overflowY: 'auto' }}>
-            {eventsWithCoords.map(event => (
-              <div key={event.id} onClick={() => router.push(`/events/${event.id}`)} style={{ background: 'rgba(10,15,30,0.9)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.3rem 0.65rem', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--text-primary)' }}>
-                📍 {event.title_el} · {event.location}
-              </div>
-            ))}
-          </div>
+      {/* Multi-marker map */}
+      {showMap && filter === 'results_approved' && eventsWithCoords.length > 0 && (
+        <div style={{ marginBottom: '1.5rem', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <MultiMarkerMap
+            events={eventsWithCoords}
+            lang="en"
+            height="360px"
+            onEventClick={id => router.push(`/events/${id}`)}
+          />
         </div>
       )}
 
+      {/* Event list */}
       {loading ? <p style={{ color: 'var(--text-secondary)' }}>Loading...</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {events.length === 0 && (
