@@ -36,7 +36,6 @@ export default function DogProfilePage() {
   }, [id])
 
   async function loadDog(dogId: string) {
-    // CHANGE 1: Added event_categories to query
     const [dogRes, resultsRes, foundationRes, sportRes] = await Promise.all([
       supabase.from('dogs').select('*, breeds(name)').eq('id', dogId).single(),
       supabase.from('competition_results')
@@ -58,6 +57,7 @@ export default function DogProfilePage() {
     setResults(resultsRes.data || [])
     setFoundationRank(foundationRes.data || null)
     setSportRanks(sportRes.data || [])
+    setLoading(false)
 
     const ownerRes = await supabase
       .from('profiles')
@@ -65,7 +65,6 @@ export default function DogProfilePage() {
       .eq('id', dogRes.data.owner_id)
       .single()
     setOwner(ownerRes.data)
-    setLoading(false)
   }
 
   function calcAge(dob: string): string {
@@ -97,22 +96,26 @@ export default function DogProfilePage() {
 
   const isDeceased = dog.status === 'in_our_memories'
 
-  // Build title circles
+  // CHANGE 1: Updated title circles block
   const titleCircles: TitleCircle[] = []
 
-  const entryEarned = foundationRank?.entry_title === true
-  const basicEarned = foundationRank?.basic_title === true
-
-  if (entryEarned) {
-    titleCircles.push({ icon: '⭐', label: t('Εισαγωγικό', 'Entry'), color: '#7eb8f7', earned: true })
-  } else if (foundationRank && foundationRank.entry_participations > 0) {
-    titleCircles.push({ icon: '⭐', label: t('Εισαγωγικό', 'Entry'), color: '#7eb8f7', earned: false, progress: `${foundationRank.entry_participations}/2` })
-  }
-
-  if (basicEarned) {
-    titleCircles.push({ icon: '⭐⭐', label: t('Βασικό', 'Basic'), color: '#7ef7a0', earned: true })
-  } else if (entryEarned && foundationRank && foundationRank.basic_participations > 0) {
-    titleCircles.push({ icon: '⭐⭐', label: t('Βασικό', 'Basic'), color: '#7ef7a0', earned: false, progress: `${foundationRank.basic_participations}/2` })
+  if (foundationRank) {
+    // Entry — always show if any activity
+    if (foundationRank.entry_participations > 0 || foundationRank.entry_title) {
+      titleCircles.push({
+        icon: '⭐', label: t('Εισαγωγικό', 'Entry'), color: '#7eb8f7',
+        earned: foundationRank.entry_title,
+        progress: foundationRank.entry_title ? undefined : `${foundationRank.entry_participations}/2`
+      })
+    }
+    // Basic — always show if any activity, locked if no entry_title
+    if (foundationRank.basic_participations > 0 || foundationRank.basic_title) {
+      titleCircles.push({
+        icon: '⭐⭐', label: t('Βασικό', 'Basic'), color: '#7ef7a0',
+        earned: foundationRank.basic_title,
+        progress: foundationRank.basic_title ? undefined : `${foundationRank.basic_participations}/2`
+      })
+    }
   }
 
   for (const sr of sportRanks) {
@@ -132,6 +135,13 @@ export default function DogProfilePage() {
   }
 
   const earnedCount = titleCircles.filter(c => c.earned).length
+
+  // CHANGE 2: Find top discipline
+  const topDiscipline = sportRanks
+    .filter(sr => !sr.sports?.is_foundation && (sr.participations > 0 || sr.title))
+    .sort((a, b) => b.current_sublevel !== a.current_sublevel
+      ? b.current_sublevel - a.current_sublevel
+      : b.total_points - a.total_points)[0]
 
   return (
     <div style={{ minHeight: '90vh', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
@@ -308,6 +318,39 @@ export default function DogProfilePage() {
           ))}
         </div>
 
+        {/* CHANGE 2: Top discipline card */}
+        {topDiscipline && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(212,175,55,0.08) 0%, rgba(212,175,55,0.02) 100%)',
+            border: '1px solid rgba(212,175,55,0.3)',
+            borderRadius: '14px',
+            padding: '1rem 1.25rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+          }}>
+            <div>
+              <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                🏆 {t('Κορυφαίο Άθλημα', 'Top Discipline')}
+              </p>
+              <p style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '1rem' }}>
+                {t(topDiscipline.sports?.name_el, topDiscipline.sports?.name_en || topDiscipline.sports?.name_el)}
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ margin: 0, fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.6rem', color: 'var(--accent)', lineHeight: 1 }}>
+                Lvl {topDiscipline.current_sublevel}
+              </p>
+              <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                {topDiscipline.total_points} {t('σύνολο πόντων', 'total points')}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Per-discipline ranking */}
         {(foundationRank || sportRanks.length > 0) && (
           <div style={{ marginBottom: '2rem' }}>
@@ -390,7 +433,6 @@ export default function DogProfilePage() {
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
             >
               <div>
-                {/* CHANGE 2 & 3: Removed arrow, added category */}
                 <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
                   {t(r.events?.title_el, r.events?.title_en || r.events?.title_el) || '—'}
                 </p>
@@ -405,7 +447,6 @@ export default function DogProfilePage() {
               <div style={{ textAlign: 'right' }}>
                 {r.placement && <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)' }}>#{r.placement}</p>}
                 {r.score != null && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.score} pts</p>}
-                {/* CHANGE 4: Added title earned badge */}
                 <p style={{ fontSize: '0.72rem', fontWeight: 600, color: r.passed ? '#7ef7a0' : '#f77e7e' }}>
                   {r.passed ? '✓ Pass' : '✗ Fail'}
                 </p>

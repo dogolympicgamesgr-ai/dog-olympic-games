@@ -1,5 +1,4 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
@@ -12,8 +11,10 @@ export default function OrganizerPage() {
 
   const [profile, setProfile] = useState<any>(null)
   const [totalEvents, setTotalEvents] = useState(0)
+  const [totalSeminars, setTotalSeminars] = useState(0)
   const [sportStats, setSportStats] = useState<SportStat[]>([])
   const [events, setEvents] = useState<RoleEvent[]>([])
+  const [seminars, setSeminars] = useState<RoleEvent[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -40,7 +41,7 @@ export default function OrganizerPage() {
 
     setProfile(prof)
 
-    // Get completed events created by this organizer with categories + sports
+    // Events: completed OR results_approved (both mean the event is fully done)
     const { data: eventsData } = await supabase
       .from('events')
       .select(`
@@ -48,16 +49,26 @@ export default function OrganizerPage() {
         event_categories(sports(name_el, name_en))
       `)
       .eq('created_by', prof.id)
-      .eq('status', 'completed')
+      .in('status', ['completed', 'results_approved'])
       .order('event_date', { ascending: false })
 
-    if (!eventsData) { setLoading(false); return }
+    // Seminars: completed
+    const { data: seminarsData } = await supabase
+      .from('seminars')
+      .select('id, title_el, title_en, seminar_date, location, is_online')
+      .eq('created_by', prof.id)
+      .eq('status', 'completed')
+      .order('seminar_date', { ascending: false })
 
-    setTotalEvents(eventsData.length)
+    const evList = eventsData || []
+    const semList = seminarsData || []
 
-    // Sport breakdown
+    setTotalEvents(evList.length)
+    setTotalSeminars(semList.length)
+
+    // Sport breakdown from events
     const sportMap: Record<string, SportStat> = {}
-    for (const ev of eventsData) {
+    for (const ev of evList) {
       const cats = ev.event_categories as any[]
       for (const cat of (cats || [])) {
         const sport = cat?.sports
@@ -69,12 +80,21 @@ export default function OrganizerPage() {
     }
     setSportStats(Object.values(sportMap).sort((a, b) => b.count - a.count))
 
-    setEvents(eventsData.map(ev => ({
+    setEvents(evList.map(ev => ({
       id: ev.id,
       title_el: ev.title_el,
       title_en: ev.title_en,
       event_date: ev.event_date,
       location: ev.location,
+    })))
+
+    setSeminars(semList.map(s => ({
+      id: s.id,
+      title_el: s.title_el,
+      title_en: s.title_en,
+      event_date: s.seminar_date,
+      location: s.is_online ? null : s.location,
+      is_online: s.is_online,
     })))
 
     setLoading(false)
@@ -87,8 +107,10 @@ export default function OrganizerPage() {
       role="organizer"
       profile={profile || {}}
       totalEvents={totalEvents}
+      totalSeminars={totalSeminars}
       sportStats={sportStats}
       events={events}
+      seminars={seminars}
       loading={loading}
     />
   )
