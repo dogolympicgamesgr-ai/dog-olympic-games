@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+
+const MultiMarkerMap = dynamic(() => import('@/components/MultiMarkerMap'), { ssr: false })
 
 export default function SeminarsPage() {
   const { t } = useLang()
@@ -15,6 +18,7 @@ export default function SeminarsPage() {
   const [searching, setSearching] = useState(false)
   const [totalCount, setTotalCount] = useState(0)
   const [upcomingCount, setUpcomingCount] = useState(0)
+  const [showMap, setShowMap] = useState(false)
 
   useEffect(() => {
     loadSession()
@@ -42,7 +46,7 @@ export default function SeminarsPage() {
     setSearching(true)
     let q = supabase
       .from('seminars')
-      .select('id, title_el, title_en, description_el, description_en, location, is_online, url, seminar_date, status')
+      .select('id, title_el, title_en, location, address, is_online, url, seminar_date, lat, lng, banner_url')
       .eq('status', 'approved')
       .order('seminar_date', { ascending: true })
       .limit(50)
@@ -54,6 +58,9 @@ export default function SeminarsPage() {
   }
 
   const canCreate = session?.isAdmin || session?.roles?.includes('organizer')
+  const isUpcoming = (iso: string) => iso && new Date(iso) > new Date()
+  const seminarsWithCoords = seminars.filter(s => s.lat && s.lng && isUpcoming(s.seminar_date))
+  const currentLang = t('el', 'en') as 'el' | 'en'
 
   const formatDate = (iso: string) => {
     if (!iso) return ''
@@ -61,8 +68,6 @@ export default function SeminarsPage() {
       day: 'numeric', month: 'long', year: 'numeric',
     })
   }
-
-  const isUpcoming = (iso: string) => iso && new Date(iso) > new Date()
 
   if (loading) return (
     <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -110,7 +115,7 @@ export default function SeminarsPage() {
           ))}
         </div>
 
-        {/* Search */}
+        {/* Search + Map toggle */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
           <input
             style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.65rem 0.85rem', color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'Outfit, sans-serif', outline: 'none' }}
@@ -126,7 +131,35 @@ export default function SeminarsPage() {
           >
             {searching ? '...' : t('Αναζήτηση', 'Search')}
           </button>
+          {seminarsWithCoords.length > 0 && (
+            <button
+              onClick={() => setShowMap(v => !v)}
+              style={{ background: showMap ? 'var(--accent)' : 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.65rem 1rem', color: showMap ? 'var(--bg)' : 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.9rem' }}
+            >
+              🗺️ {t('Χάρτης', 'Map')}
+            </button>
+          )}
         </div>
+
+        {/* Map — upcoming in-person seminars with coords */}
+        {showMap && seminarsWithCoords.length > 0 && (
+          <div style={{ marginBottom: '1.5rem', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+            <MultiMarkerMap
+              events={seminarsWithCoords.map(s => ({
+                id: s.id,
+                lat: s.lat,
+                lng: s.lng,
+                title_el: s.title_el,
+                title_en: s.title_en,
+                location: s.location,
+                event_date: s.seminar_date,
+              }))}
+              lang={currentLang}
+              height="340px"
+              onEventClick={id => router.push(`/seminars/${id}`)}
+            />
+          </div>
+        )}
 
         {/* List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -142,35 +175,44 @@ export default function SeminarsPage() {
               <div
                 key={s.id}
                 onClick={() => router.push(`/seminars/${s.id}`)}
-                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '1.25rem', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden', cursor: 'pointer', transition: 'border-color 0.15s' }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                  <p style={{ margin: 0, fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.04em', color: 'var(--text-primary)' }}>
-                    {title}
-                  </p>
-                  <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
-                    {s.is_online && (
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'rgba(126,184,247,0.15)', color: '#7eb8f7', border: '1px solid #7eb8f744' }}>
-                        🌐 {t('Online', 'Online')}
+                {s.banner_url && (
+                  <div style={{ width: '100%', height: '130px', overflow: 'hidden' }}>
+                    <img src={s.banner_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                )}
+                <div style={{ padding: '1rem 1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <p style={{ margin: 0, fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.04em', color: 'var(--text-primary)' }}>
+                      {title}
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
+                      {s.is_online && (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', background: 'rgba(126,184,247,0.15)', color: '#7eb8f7', border: '1px solid #7eb8f744' }}>
+                          🌐 Online
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', background: upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg)', color: upcoming ? 'var(--accent)' : 'var(--text-secondary)', border: `1px solid ${upcoming ? 'var(--accent)' : 'var(--border)'}` }}>
+                        {upcoming ? t('Επερχόμενο', 'Upcoming') : t('Ολοκληρώθηκε', 'Past')}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    {s.seminar_date && (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>📅 {formatDate(s.seminar_date)}</span>
+                    )}
+                    {!s.is_online && s.location && (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        📍 {s.location}{s.address ? ` — ${s.address}` : ''}
                       </span>
                     )}
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', background: upcoming ? 'rgba(212,175,55,0.15)' : 'var(--bg)', color: upcoming ? 'var(--accent)' : 'var(--text-secondary)', border: `1px solid ${upcoming ? 'var(--accent)' : 'var(--border)'}` }}>
-                      {upcoming ? t('Επερχόμενο', 'Upcoming') : t('Ολοκληρώθηκε', 'Past')}
-                    </span>
+                    {s.is_online && (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🔗 {t('Διαδικτυακό', 'Online seminar')}</span>
+                    )}
                   </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                  {s.seminar_date && (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>📅 {formatDate(s.seminar_date)}</span>
-                  )}
-                  {!s.is_online && s.location && (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>📍 {s.location}</span>
-                  )}
-                  {s.is_online && s.url && (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>🔗 {t('Διαδικτυακό', 'Online seminar')}</span>
-                  )}
                 </div>
               </div>
             )

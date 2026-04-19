@@ -17,6 +17,7 @@ export default function SeminarDetailPage() {
   const [organizer, setOrganizer] = useState<any>(null)
   const [session, setSession] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const [registration, setRegistration] = useState<any>(null)
   const [registrations, setRegistrations] = useState<any[]>([])
   const [regLoading, setRegLoading] = useState(false)
@@ -49,16 +50,18 @@ export default function SeminarDetailPage() {
         .eq('user_id', sessionRes.user.id)
         .maybeSingle()
       setRegistration(myReg)
-
-      // Load all registrations if logged in and seminar is approved/completed
-      if (['approved', 'completed'].includes(seminarRes.data.status)) {
-        const { data: allRegs } = await supabase
-          .from('seminar_registrations')
-          .select('id, user_id, status, attendance_status, profiles!seminar_registrations_user_id_fkey(id, full_name, member_id, avatar_url)')
-          .eq('seminar_id', seminarId)
-        setRegistrations(allRegs || [])
-      }
     }
+
+    // Load all registrations only for organizer/admin
+    const isOrgOrAdmin = sessionRes?.isAdmin || sessionRes?.roles?.includes('organizer') || sessionRes?.user?.id === seminarRes.data.created_by
+    if (isOrgOrAdmin && ['approved', 'completed'].includes(seminarRes.data.status)) {
+      const { data: allRegs } = await supabase
+        .from('seminar_registrations')
+        .select('id, user_id, status, attendance_status, profiles!seminar_registrations_user_id_fkey(id, full_name, member_id, avatar_url)')
+        .eq('seminar_id', seminarId)
+      setRegistrations(allRegs || [])
+    }
+
     setLoading(false)
   }
 
@@ -79,11 +82,14 @@ export default function SeminarDetailPage() {
         .from('seminar_registrations').select('id, status, attendance_status')
         .eq('seminar_id', id as string).eq('user_id', session.user.id).maybeSingle()
       setRegistration(myReg)
-      const { data: allRegs } = await supabase
-        .from('seminar_registrations')
-        .select('id, user_id, status, attendance_status, profiles!seminar_registrations_user_id_fkey(id, full_name, member_id, avatar_url)')
-        .eq('seminar_id', id as string)
-      setRegistrations(allRegs || [])
+      // Reload registrations if org/admin
+      if (isOrgOrAdmin) {
+        const { data: allRegs } = await supabase
+          .from('seminar_registrations')
+          .select('id, user_id, status, attendance_status, profiles!seminar_registrations_user_id_fkey(id, full_name, member_id, avatar_url)')
+          .eq('seminar_id', id as string)
+        setRegistrations(allRegs || [])
+      }
     }
     setRegLoading(false)
   }
@@ -93,11 +99,13 @@ export default function SeminarDetailPage() {
     setRegLoading(true)
     await supabase.from('seminar_registrations').delete().eq('id', registration.id)
     setRegistration(null)
-    const { data: allRegs } = await supabase
-      .from('seminar_registrations')
-      .select('id, user_id, status, attendance_status, profiles!seminar_registrations_user_id_fkey(id, full_name, member_id, avatar_url)')
-      .eq('seminar_id', id as string)
-    setRegistrations(allRegs || [])
+    if (isOrgOrAdmin) {
+      const { data: allRegs } = await supabase
+        .from('seminar_registrations')
+        .select('id, user_id, status, attendance_status, profiles!seminar_registrations_user_id_fkey(id, full_name, member_id, avatar_url)')
+        .eq('seminar_id', id as string)
+      setRegistrations(allRegs || [])
+    }
     setRegLoading(false)
   }
 
@@ -127,7 +135,6 @@ export default function SeminarDetailPage() {
   const isOrgOrAdmin = isAdmin || session?.roles?.includes('organizer') || isMyEvent
   const isUpcoming = seminar.seminar_date && new Date(seminar.seminar_date) > new Date()
   const isCompleted = seminar.status === 'completed'
-  const isLocked = isCompleted
   const canAttendance = (isMyEvent || isAdmin) && seminar.status === 'approved'
   const title = t(seminar.title_el, seminar.title_en || seminar.title_el)
   const desc = t(seminar.description_el, seminar.description_en || seminar.description_el)
@@ -137,10 +144,26 @@ export default function SeminarDetailPage() {
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
-      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '0 1.5rem' }}>
-        <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', marginBottom: '1rem', padding: 0 }}>←</button>
 
-        {/* Status + online badge */}
+      {/* Banner lightbox */}
+      {lightboxOpen && seminar.banner_url && (
+        <div onClick={() => setLightboxOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, cursor: 'zoom-out' }}>
+          <img src={seminar.banner_url} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }} />
+        </div>
+      )}
+
+      {/* Banner */}
+      {seminar.banner_url && (
+        <div onClick={() => setLightboxOpen(true)} style={{ width: '100%', height: '240px', overflow: 'hidden', cursor: 'zoom-in', position: 'relative' }}>
+          <img src={seminar.banner_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 40%, var(--bg) 100%)' }} />
+        </div>
+      )}
+
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '0 1.5rem' }}>
+        <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', marginBottom: '1rem', marginTop: seminar.banner_url ? '-1rem' : '0', padding: 0, position: 'relative', zIndex: 1 }}>←</button>
+
+        {/* Status badges */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
           {seminar.is_online && (
             <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.25rem 0.7rem', borderRadius: '99px', background: 'rgba(126,184,247,0.15)', color: '#7eb8f7', border: '1px solid #7eb8f744' }}>
@@ -166,7 +189,7 @@ export default function SeminarDetailPage() {
           </button>
         )}
 
-        {/* Info */}
+        {/* Key info */}
         <div style={cardStyle}>
           {seminar.seminar_date && (
             <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.65rem', alignItems: 'flex-start' }}>
@@ -195,6 +218,7 @@ export default function SeminarDetailPage() {
               <div>
                 <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{t('Τοποθεσία', 'Location')}</p>
                 <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{seminar.location}</p>
+                {seminar.address && <p style={{ margin: '0.1rem 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{seminar.address}</p>}
               </div>
             </div>
           ) : null}
@@ -222,28 +246,20 @@ export default function SeminarDetailPage() {
                 <p style={{ margin: 0, fontSize: '0.88rem', color: '#7ef7a0', fontWeight: 600 }}>
                   ✅ {t('Είσαι εγγεγραμμένος/η', 'You are registered')}
                 </p>
-                <button
-                  onClick={handleCancel}
-                  disabled={regLoading}
-                  style={{ background: 'none', border: '1px solid #f77e7e', borderRadius: '8px', padding: '0.4rem 0.9rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.82rem', fontFamily: 'Outfit, sans-serif' }}
-                >
+                <button onClick={handleCancel} disabled={regLoading} style={{ background: 'none', border: '1px solid #f77e7e', borderRadius: '8px', padding: '0.4rem 0.9rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.82rem', fontFamily: 'Outfit, sans-serif' }}>
                   {t('Ακύρωση Εγγραφής', 'Cancel Registration')}
                 </button>
               </div>
             ) : (
-              <button
-                onClick={handleRegister}
-                disabled={regLoading}
-                style={{ width: '100%', background: 'var(--accent)', border: 'none', borderRadius: '10px', padding: '0.85rem', color: 'var(--bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', letterSpacing: '0.04em' }}
-              >
+              <button onClick={handleRegister} disabled={regLoading} style={{ width: '100%', background: 'var(--accent)', border: 'none', borderRadius: '10px', padding: '0.85rem', color: 'var(--bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', letterSpacing: '0.04em' }}>
                 {regLoading ? t('Εγγραφή...', 'Registering...') : t('Εγγραφή στο Σεμινάριο', 'Register for Seminar')}
               </button>
             )}
           </div>
         )}
 
-        {/* Participants */}
-        {isLoggedIn && registrations.length > 0 && (
+        {/* Participants — organizer/admin only */}
+        {isOrgOrAdmin && registrations.length > 0 && (
           <div style={cardStyle}>
             <p style={sectionTitle}>👥 {t('Συμμετέχοντες', 'Participants')} ({registrations.length})</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -281,6 +297,24 @@ export default function SeminarDetailPage() {
             <div style={{ height: '220px' }}>
               <MapView lat={seminar.lat} lng={seminar.lng} label={seminar.location} />
             </div>
+          </div>
+        )}
+
+        {/* Contact */}
+        {(seminar.contact_name || seminar.contact_phone || seminar.contact_email) && (
+          <div style={cardStyle}>
+            <p style={sectionTitle}>{t('Επικοινωνία', 'Contact')}</p>
+            {seminar.contact_name && <p style={{ margin: '0 0 0.35rem', color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem' }}>👤 {seminar.contact_name}</p>}
+            {seminar.contact_phone && (
+              <p style={{ margin: '0 0 0.35rem', fontSize: '0.88rem' }}>
+                <a href={`tel:${seminar.contact_phone}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>📞 {seminar.contact_phone}</a>
+              </p>
+            )}
+            {seminar.contact_email && (
+              <p style={{ margin: 0, fontSize: '0.88rem' }}>
+                <a href={`mailto:${seminar.contact_email}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>✉️ {seminar.contact_email}</a>
+              </p>
+            )}
           </div>
         )}
 
