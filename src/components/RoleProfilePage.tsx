@@ -1,5 +1,4 @@
 'use client'
-
 import { useLang } from '@/context/LanguageContext'
 import { useRouter } from 'next/navigation'
 
@@ -9,6 +8,7 @@ export interface RoleEvent {
   title_en?: string
   event_date?: string
   location?: string
+  is_online?: boolean
 }
 
 export interface SportStat {
@@ -29,8 +29,10 @@ interface RoleProfilePageProps {
     avatar_url?: string
   }
   totalEvents: number
-  sportStats: SportStat[]   // empty for decoy
+  totalSeminars?: number      // organizer only
+  sportStats: SportStat[]
   events: RoleEvent[]
+  seminars?: RoleEvent[]      // organizer only
   loading: boolean
 }
 
@@ -40,7 +42,10 @@ const ROLE_CONFIG = {
   decoy:     { icon: '🎯', el: 'Decoy',         en: 'Decoy',     color: '#f77e7e' },
 }
 
-export default function RoleProfilePage({ role, profile, totalEvents, sportStats, events, loading }: RoleProfilePageProps) {
+export default function RoleProfilePage({
+  role, profile, totalEvents, totalSeminars = 0,
+  sportStats, events, seminars = [], loading,
+}: RoleProfilePageProps) {
   const { t } = useLang()
   const router = useRouter()
   const cfg = ROLE_CONFIG[role]
@@ -54,6 +59,17 @@ export default function RoleProfilePage({ role, profile, totalEvents, sportStats
   )
 
   const displayEmail = profile.display_email || profile.email
+
+  const statPill = (count: number, labelEl: string, labelEn: string) => (
+    <div style={{ background: 'var(--bg-card)', border: `1px solid ${cfg.color}44`, borderRadius: '99px', padding: '0.65rem 2rem', textAlign: 'center', boxShadow: `0 0 16px ${cfg.color}22` }}>
+      <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.8rem', color: cfg.color, letterSpacing: '0.05em', margin: 0, lineHeight: 1 }}>
+        {count}
+      </p>
+      <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        {t(labelEl, labelEn)}
+      </p>
+    </div>
+  )
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
@@ -82,72 +98,42 @@ export default function RoleProfilePage({ role, profile, totalEvents, sportStats
           )}
         </div>
 
-        {/* Profile photo */}
+        {/* Avatar */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-          <div style={{
-            width: '180px', height: '180px', borderRadius: '50%',
-            border: `3px solid ${cfg.color}`,
-            background: 'var(--bg-card)', overflow: 'hidden',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: `0 0 30px ${cfg.color}22`,
-          }}>
+          <div style={{ width: '180px', height: '180px', borderRadius: '50%', border: `3px solid ${cfg.color}`, background: 'var(--bg-card)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 30px ${cfg.color}22` }}>
             {profile.avatar_url
               ? <img src={profile.avatar_url} alt={profile.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
-              : <span style={{ fontSize: '4.5rem' }}>🐾</span>
-            }
+              : <span style={{ fontSize: '4.5rem' }}>🐾</span>}
           </div>
         </div>
 
-        {/* Total events pill */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
-          <div style={{
-            background: 'var(--bg-card)',
-            border: `1px solid ${cfg.color}44`,
-            borderRadius: '99px',
-            padding: '0.65rem 2rem',
-            textAlign: 'center',
-            boxShadow: `0 0 16px ${cfg.color}22`,
-          }}>
-            <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.8rem', color: cfg.color, letterSpacing: '0.05em', margin: 0, lineHeight: 1 }}>
-              {totalEvents}
-            </p>
-            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              {t(
-                role === 'judge' ? 'Συνολικοί Αγώνες ως Κριτής' :
-                role === 'organizer' ? 'Συνολικοί Αγώνες ως Διοργανωτής' :
-                'Συνολικοί Αγώνες ως Decoy',
-                role === 'judge' ? 'Total Events as Judge' :
-                role === 'organizer' ? 'Total Events as Organizer' :
-                'Total Events as Decoy'
-              )}
-            </p>
-          </div>
+        {/* Stat pills */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+          {statPill(
+            totalEvents,
+            role === 'judge' ? 'Αγώνες ως Κριτής' : role === 'organizer' ? 'Αγώνες ως Διοργανωτής' : 'Αγώνες ως Decoy',
+            role === 'judge' ? 'Events as Judge' : role === 'organizer' ? 'Events as Organizer' : 'Events as Decoy',
+          )}
+          {role === 'organizer' && totalSeminars > 0 && statPill(
+            totalSeminars,
+            'Σεμινάρια ως Διοργανωτής',
+            'Seminars as Organizer',
+          )}
         </div>
 
-        {/* Sport breakdown — judge + organizer only */}
+        {/* Sport breakdown */}
         {sportStats.length > 0 && (
-          <div style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem',
-          }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem' }}>
             <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: cfg.color, letterSpacing: '0.05em', margin: '0 0 1rem' }}>
               {t('Ανάλυση ανά Αγώνισμα', 'Breakdown by Sport')}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {sportStats.map((s, i) => (
-                <div key={i} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '0.5rem 0',
-                  borderBottom: i < sportStats.length - 1 ? '1px solid var(--border)' : 'none',
-                }}>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: i < sportStats.length - 1 ? '1px solid var(--border)' : 'none' }}>
                   <p style={{ color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
                     {t(s.sport_name_el, s.sport_name_en)}
                   </p>
-                  <span style={{
-                    background: `${cfg.color}15`, border: `1px solid ${cfg.color}44`,
-                    borderRadius: '99px', padding: '0.15rem 0.75rem',
-                    fontSize: '0.82rem', fontWeight: 700, color: cfg.color,
-                  }}>
+                  <span style={{ background: `${cfg.color}15`, border: `1px solid ${cfg.color}44`, borderRadius: '99px', padding: '0.15rem 0.75rem', fontSize: '0.82rem', fontWeight: 700, color: cfg.color }}>
                     {s.count}
                   </span>
                 </div>
@@ -156,14 +142,11 @@ export default function RoleProfilePage({ role, profile, totalEvents, sportStats
           </div>
         )}
 
-        {/* Event list */}
-        <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: '12px', overflow: 'hidden',
-        }}>
+        {/* Events list */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '1rem' }}>
           <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
             <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: cfg.color, letterSpacing: '0.05em', margin: 0 }}>
-              {t('Λίστα Αγώνων', 'Event List')}
+              🏆 {t('Λίστα Αγώνων', 'Event List')}
             </p>
           </div>
           {events.length === 0 ? (
@@ -175,14 +158,9 @@ export default function RoleProfilePage({ role, profile, totalEvents, sportStats
               <div
                 key={event.id}
                 onClick={() => router.push(`/events/${event.id}`)}
-                style={{
-                  padding: '0.9rem 1.25rem',
-                  borderBottom: i < events.length - 1 ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                style={{ padding: '0.9rem 1.25rem', borderBottom: i < events.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', transition: 'background 0.15s', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 <div>
                   <p style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem', margin: 0 }}>
@@ -198,16 +176,52 @@ export default function RoleProfilePage({ role, profile, totalEvents, sportStats
           )}
         </div>
 
-        {/* Link back to profile */}
+        {/* Seminars list — organizer only */}
+        {role === 'organizer' && (
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '1rem' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
+              <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: cfg.color, letterSpacing: '0.05em', margin: 0 }}>
+                📚 {t('Λίστα Σεμιναρίων', 'Seminar List')}
+              </p>
+            </div>
+            {seminars.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+                {t('Δεν υπάρχουν σεμινάρια ακόμα', 'No seminars yet')}
+              </div>
+            ) : (
+              seminars.map((s, i) => (
+                <div
+                  key={s.id}
+                  onClick={() => router.push(`/seminars/${s.id}`)}
+                  style={{ padding: '0.9rem 1.25rem', borderBottom: i < seminars.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer', transition: 'background 0.15s', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div>
+                    <p style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      {t(s.title_el, s.title_en || s.title_el)}
+                      {s.is_online && (
+                        <span style={{ fontSize: '0.65rem', color: '#7eb8f7', background: '#7eb8f711', border: '1px solid #7eb8f733', borderRadius: '99px', padding: '0.1rem 0.4rem', fontWeight: 700 }}>
+                          Online
+                        </span>
+                      )}
+                    </p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', margin: '0.15rem 0 0' }}>
+                      {s.is_online ? t('Διαδικτυακό', 'Online') : (s.location || '—')} · {s.event_date ? new Date(s.event_date).toLocaleDateString('el-GR') : '—'}
+                    </p>
+                  </div>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', flexShrink: 0 }}>→</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Back to profile */}
         <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
           <button
             onClick={() => router.push(`/profile/${profile.member_id}`)}
-            style={{
-              background: 'none', border: `1px solid var(--border)`,
-              borderRadius: '8px', padding: '0.5rem 1.25rem',
-              color: 'var(--text-secondary)', cursor: 'pointer',
-              fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem',
-            }}
+            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 1.25rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.82rem' }}
           >
             ← {t('Προφίλ', 'Profile')}
           </button>
