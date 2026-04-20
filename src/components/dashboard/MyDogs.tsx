@@ -12,7 +12,12 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
   const [breeds, setBreeds] = useState<any[]>([])
   const [breedsLoading, setBreedsLoading] = useState(false)
   const [form, setForm] = useState({
-    name: '', breed_id: '', date_of_birth: '', gender: '', neutered: false, chip_number: '',
+    name: '',
+    breed_id: '',
+    date_of_birth: '',
+    gender: '',
+    neutered: false,
+    chip_number: '',
   })
   const [saveError, setSaveError] = useState<string | null>(null)
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
@@ -30,35 +35,23 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
     setBreedsLoading(false)
   }
 
-  function handleDateInput(value: string) {
-    const digits = value.replace(/\D/g, '').slice(0, 8)
-    let formatted = digits
-    if (digits.length > 2) formatted = digits.slice(0, 2) + '/' + digits.slice(2)
-    if (digits.length > 4) formatted = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4)
-    setForm({ ...form, date_of_birth: formatted })
-  }
-
-  function parseDateToISO(dmy: string): string | null {
-    const parts = dmy.split('/')
-    if (parts.length !== 3) return null
-    const [dd, mm, yyyy] = parts
-    if (dd.length !== 2 || mm.length !== 2 || yyyy.length !== 4) return null
-    const d = parseInt(dd), m = parseInt(mm), y = parseInt(yyyy)
-    if (d < 1 || d > 31 || m < 1 || m > 12 || y < 1900 || y > new Date().getFullYear()) return null
-    return `${yyyy}-${mm}-${dd}`
-  }
-
   async function handleAddDog() {
-    if (!form.name || !profile?.id) return
+    if (!profile?.id) return
 
+    if (!form.name.trim()) {
+      setSaveError(t('Το όνομα είναι υποχρεωτικό', 'Name is required'))
+      return
+    }
     if (!form.chip_number.trim()) {
       setSaveError(t('Ο αριθμός chip είναι υποχρεωτικός', 'Chip number is required'))
       return
     }
-
-    const isoDate = form.date_of_birth ? parseDateToISO(form.date_of_birth) : null
-    if (form.date_of_birth && !isoDate) {
-      setSaveError(t('Μη έγκυρη ημερομηνία. Χρησιμοποιήστε ΗΗ/ΜΜ/ΕΕΕΕ', 'Invalid date. Use DD/MM/YYYY'))
+    if (!form.breed_id) {
+      setSaveError(t('Η φυλή είναι υποχρεωτική', 'Breed is required'))
+      return
+    }
+    if (!form.gender) {
+      setSaveError(t('Το φύλο είναι υποχρεωτικό', 'Gender is required'))
       return
     }
 
@@ -67,10 +60,10 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
 
     const { error } = await supabase.from('dogs').insert({
       owner_id: profile.id,
-      name: form.name,
-      breed_id: form.breed_id ? parseInt(form.breed_id) : null,
-      date_of_birth: isoDate,
-      gender: form.gender || null,
+      name: form.name.trim(),
+      breed_id: parseInt(form.breed_id),
+      date_of_birth: form.date_of_birth || null,
+      gender: form.gender,
       neutered: form.neutered,
       chip_number: form.chip_number.trim(),
       status: 'active',
@@ -126,7 +119,9 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
       const { data } = supabase.storage.from('dogs').getPublicUrl(path)
       await supabase.from('dogs').update({ photo_url: data.publicUrl + '?t=' + Date.now() }).eq('id', dogId)
       onSave()
-    } catch (err) { console.error('photo upload error:', err) }
+    } catch (err) {
+      console.error('photo upload error:', err)
+    }
     setUploadingFor(null)
   }
 
@@ -147,26 +142,65 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
   }
 
   const inputStyle = {
-    width: '100%', background: 'var(--bg)', border: '1px solid var(--border)',
-    borderRadius: '8px', padding: '0.65rem 0.85rem', color: 'var(--text-primary)',
-    fontSize: '0.9rem', fontFamily: 'Outfit, sans-serif', marginBottom: '0.75rem',
+    width: '100%',
+    background: 'var(--bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '0.65rem 0.85rem',
+    color: 'var(--text-primary)',
+    fontSize: '0.9rem',
+    fontFamily: 'Outfit, sans-serif',
+    marginBottom: '0.75rem',
     boxSizing: 'border-box' as const,
   }
-  const labelStyle = { fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }
-  const statusLabel = (s: string) => s === 'active' ? t('Ενεργός', 'Active') : s === 'retired' ? t('Αποσυρμένος', 'Retired') : s === 'in_our_memories' ? t('Στη μνήμη του', 'In our memories') : s
-  const statusColor = (s: string) => s === 'active' ? '#4caf50' : s === 'retired' ? 'var(--text-secondary)' : s === 'in_our_memories' ? '#9575cd' : 'var(--text-secondary)'
+
+  const labelStyle = {
+    fontSize: '0.78rem',
+    color: 'var(--text-secondary)',
+    marginBottom: '0.25rem',
+    display: 'block'
+  }
+
+  const requiredDot = (
+    <span style={{ color: 'var(--accent)', marginLeft: '2px' }}>*</span>
+  )
+
+  const statusLabel = (s: string) =>
+    s === 'active' ? t('Ενεργός', 'Active') :
+    s === 'retired' ? t('Αποσυρμένος', 'Retired') :
+    s === 'in_our_memories' ? t('Στη μνήμη του', 'In our memories') : s
+
+  const statusColor = (s: string) =>
+    s === 'active' ? '#4caf50' :
+    s === 'retired' ? 'var(--text-secondary)' :
+    s === 'in_our_memories' ? '#9575cd' : 'var(--text-secondary)'
+
+  const isFormValid = form.name.trim() && form.chip_number.trim() && form.breed_id && form.gender
 
   return (
     <div>
       {dogs.map(dog => (
-        <div key={dog.id} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem', marginBottom: '0.75rem' }}>
+        <div key={dog.id} style={{
+          background: 'var(--bg)',
+          border: '1px solid var(--border)',
+          borderRadius: '10px',
+          padding: '1rem',
+          marginBottom: '0.75rem'
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div
-              style={{ width: '52px', height: '52px', borderRadius: '50%', border: '2px solid var(--accent)', overflow: 'hidden', background: 'var(--bg-card)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}
-              onClick={() => { setActiveDogId(dog.id); fileRef.current?.click() }}
-            >
-              {dog.photo_url ? <img src={dog.photo_url} alt={dog.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.4rem' }}>🐕</span>}
-              {uploadingFor === dog.id && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'white' }}>...</div>}
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '50%',
+              border: '2px solid var(--accent)', overflow: 'hidden',
+              background: 'var(--bg-card)', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', position: 'relative'
+            }} onClick={() => { setActiveDogId(dog.id); fileRef.current?.click() }}>
+              {dog.photo_url
+                ? <img src={dog.photo_url} alt={dog.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <span style={{ fontSize: '1.4rem' }}>🐕</span>}
+              {uploadingFor === dog.id && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'white' }}>...</div>
+              )}
             </div>
             <div style={{ flex: 1 }}>
               <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{dog.name}</p>
@@ -176,27 +210,41 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
                 {dog.gender === 'male' ? t('Αρσενικό', 'Male') : dog.gender === 'female' ? t('Θηλυκό', 'Female') : ''}
                 {dog.neutered ? ` · ${t('Στειρωμένο', 'Neutered')}` : ''}
               </p>
-              <p style={{ fontSize: '0.72rem', color: statusColor(dog.status), fontWeight: 600, marginTop: '0.15rem' }}>● {statusLabel(dog.status || 'active')}</p>
-              <Link href={`/dogs/${dog.id}`} style={{ fontSize: '0.72rem', color: 'var(--accent)', textDecoration: 'none' }}>{t('Προφίλ', 'Profile')} →</Link>
+              <p style={{ fontSize: '0.72rem', color: statusColor(dog.status), fontWeight: 600, marginTop: '0.15rem' }}>
+                ● {statusLabel(dog.status || 'active')}
+              </p>
+              <Link href={`/dogs/${dog.id}`} style={{ fontSize: '0.72rem', color: 'var(--accent)', textDecoration: 'none' }}>
+                {t('Προφίλ', 'Profile')} →
+              </Link>
             </div>
           </div>
+
           <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' as const }}>
-            <select value={dog.status || 'active'} onChange={e => handleStatusChange(dog.id, e.target.value)} disabled={updatingStatusFor === dog.id} style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.6rem', color: 'var(--text-secondary)', fontSize: '0.78rem', fontFamily: 'Outfit, sans-serif', cursor: 'pointer' }}>
+            <select
+              value={dog.status || 'active'}
+              onChange={e => handleStatusChange(dog.id, e.target.value)}
+              disabled={updatingStatusFor === dog.id}
+              style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.6rem', color: 'var(--text-secondary)', fontSize: '0.78rem', fontFamily: 'Outfit, sans-serif', cursor: 'pointer' }}
+            >
               <option value="active">{t('Ενεργός', 'Active')}</option>
               <option value="retired">{t('Αποσυρμένος', 'Retired')}</option>
               <option value="in_our_memories">{t('Στη μνήμη του', 'In our memories')}</option>
             </select>
+
             {confirmDeleteId === dog.id ? (
               <>
-                <button onClick={() => handleDelete(dog.id)} disabled={deletingId === dog.id} style={{ background: '#c62828', border: 'none', borderRadius: '6px', padding: '0.4rem 0.75rem', color: 'white', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
+                <button onClick={() => handleDelete(dog.id)} disabled={deletingId === dog.id}
+                  style={{ background: '#c62828', border: 'none', borderRadius: '6px', padding: '0.4rem 0.75rem', color: 'white', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
                   {deletingId === dog.id ? '...' : t('Επιβεβαίωση', 'Confirm')}
                 </button>
-                <button onClick={() => setConfirmDeleteId(null)} style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.75rem', color: 'var(--text-secondary)', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
+                <button onClick={() => setConfirmDeleteId(null)}
+                  style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.75rem', color: 'var(--text-secondary)', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
                   {t('Ακύρωση', 'Cancel')}
                 </button>
               </>
             ) : (
-              <button onClick={() => setConfirmDeleteId(dog.id)} style={{ background: 'transparent', border: '1px solid #c62828', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#f77e7e', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
+              <button onClick={() => setConfirmDeleteId(dog.id)}
+                style={{ background: 'transparent', border: '1px solid #c62828', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#f77e7e', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
                 🗑 {t('Διαγραφή', 'Delete')}
               </button>
             )}
@@ -204,22 +252,41 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
         </div>
       ))}
 
-      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => activeDogId && handlePhotoUpload(e, activeDogId)} />
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+        onChange={e => activeDogId && handlePhotoUpload(e, activeDogId)} />
 
       {!adding ? (
-        <button onClick={() => { setAdding(true); loadBreeds() }} style={{ width: '100%', background: 'var(--bg)', border: '1px dashed var(--accent)', borderRadius: '10px', padding: '1rem', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.95rem', marginTop: '0.5rem' }}>
+        <button onClick={() => { setAdding(true); loadBreeds() }} style={{
+          width: '100%', background: 'var(--bg)', border: '1px dashed var(--accent)',
+          borderRadius: '10px', padding: '1rem', color: 'var(--accent)',
+          cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.95rem', marginTop: '0.5rem'
+        }}>
           + {t('Προσθήκη Σκύλου', 'Add Dog')}
         </button>
       ) : (
         <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem', marginTop: '0.5rem' }}>
-          <div style={{ background: 'rgba(232,185,79,0.08)', border: '1px solid rgba(232,185,79,0.3)', borderRadius: '8px', padding: '0.65rem 0.85rem', marginBottom: '1rem', fontSize: '0.78rem', color: 'var(--accent)', lineHeight: 1.5 }}>
-            ⚠️ {t('Τα στοιχεία του σκύλου δεν μπορούν να αλλάξουν μετά την αποθήκευση. Ελέγξτε προσεκτικά πριν αποθηκεύσετε.', 'Dog data cannot be changed after saving. Please check carefully before saving.')}
+          <div style={{
+            background: 'rgba(232,185,79,0.08)', border: '1px solid rgba(232,185,79,0.3)',
+            borderRadius: '8px', padding: '0.65rem 0.85rem', marginBottom: '1rem',
+            fontSize: '0.78rem', color: 'var(--accent)', lineHeight: 1.5
+          }}>
+            ⚠️ {t(
+              'Τα στοιχεία του σκύλου δεν μπορούν να αλλάξουν μετά την αποθήκευση. Ελέγξτε προσεκτικά πριν αποθηκεύσετε.',
+              'Dog data cannot be changed after saving. Please check carefully before saving.'
+            )}
           </div>
 
-          <label style={labelStyle}>{t('Όνομα *', 'Name *')}</label>
-          <input style={inputStyle} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={t('Όνομα σκύλου', 'Dog name')} />
+          {/* Name */}
+          <label style={labelStyle}>{t('Όνομα', 'Name')}{requiredDot}</label>
+          <input
+            style={inputStyle}
+            value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            placeholder={t('Όνομα σκύλου', 'Dog name')}
+          />
 
-          <label style={labelStyle}>🔖 {t('Αριθμός Chip *', 'Chip Number *')}</label>
+          {/* Chip Number */}
+          <label style={labelStyle}>🔖 {t('Αριθμός Chip', 'Chip Number')}{requiredDot}</label>
           <input
             style={{ ...inputStyle, border: '1px solid var(--accent)55' }}
             value={form.chip_number}
@@ -228,39 +295,74 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
             maxLength={20}
           />
 
-          <label style={labelStyle}>{t('Φυλή', 'Breed')}</label>
-          <select style={inputStyle} value={form.breed_id} onChange={e => setForm({ ...form, breed_id: e.target.value })}>
+          {/* Breed */}
+          <label style={labelStyle}>{t('Φυλή', 'Breed')}{requiredDot}</label>
+          <select
+            style={inputStyle}
+            value={form.breed_id}
+            onChange={e => setForm({ ...form, breed_id: e.target.value })}
+          >
             <option value="">{breedsLoading ? t('Φόρτωση...', 'Loading...') : t('Επιλογή φυλής', 'Select breed')}</option>
             {breeds.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
 
-          <label style={labelStyle}>{t('Ημ. Γέννησης (ΗΗ/ΜΜ/ΕΕΕΕ)', 'Date of Birth (DD/MM/YYYY)')}</label>
-          <input style={inputStyle} value={form.date_of_birth} onChange={e => handleDateInput(e.target.value)} placeholder="ΗΗ/ΜΜ/ΕΕΕΕ" maxLength={10} inputMode="numeric" />
+          {/* Date of Birth — native date picker, mobile-friendly */}
+          <label style={labelStyle}>{t('Ημ. Γέννησης', 'Date of Birth')}</label>
+          <input
+            type="date"
+            style={inputStyle}
+            value={form.date_of_birth}
+            onChange={e => setForm({ ...form, date_of_birth: e.target.value })}
+            max={new Date().toISOString().split('T')[0]}
+          />
 
-          <label style={labelStyle}>{t('Φύλο', 'Gender')}</label>
-          <select style={inputStyle} value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}>
+          {/* Gender */}
+          <label style={labelStyle}>{t('Φύλο', 'Gender')}{requiredDot}</label>
+          <select
+            style={inputStyle}
+            value={form.gender}
+            onChange={e => setForm({ ...form, gender: e.target.value })}
+          >
             <option value="">{t('Επιλογή', 'Select')}</option>
             <option value="male">{t('Αρσενικό', 'Male')}</option>
             <option value="female">{t('Θηλυκό', 'Female')}</option>
           </select>
 
+          {/* Neutered toggle */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <span style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{t('Στειρωμένο', 'Neutered')}</span>
-            <div style={{ width: '44px', height: '24px', borderRadius: '12px', background: form.neutered ? 'var(--accent)' : 'var(--border)', position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }} onClick={() => setForm({ ...form, neutered: !form.neutered })}>
-              <div style={{ position: 'absolute', top: '3px', left: form.neutered ? '23px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: 'white', transition: 'left 0.2s' }} />
+            <div style={{
+              width: '44px', height: '24px', borderRadius: '12px',
+              background: form.neutered ? 'var(--accent)' : 'var(--border)',
+              position: 'relative', cursor: 'pointer', transition: 'background 0.2s'
+            }} onClick={() => setForm({ ...form, neutered: !form.neutered })}>
+              <div style={{
+                position: 'absolute', top: '3px', left: form.neutered ? '23px' : '3px',
+                width: '18px', height: '18px', borderRadius: '50%',
+                background: 'white', transition: 'left 0.2s'
+              }} />
             </div>
           </div>
 
           {saveError && <p style={{ color: '#f77e7e', fontSize: '0.82rem', marginBottom: '0.75rem' }}>⚠️ {saveError}</p>}
 
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button onClick={() => { setAdding(false); setSaveError(null) }} style={{ flex: 1, background: 'transparent', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}>
+            <button onClick={() => { setAdding(false); setSaveError(null) }} style={{
+              flex: 1, background: 'transparent', border: '1px solid var(--border)',
+              borderRadius: '8px', padding: '0.75rem', color: 'var(--text-secondary)',
+              cursor: 'pointer', fontFamily: 'Outfit, sans-serif'
+            }}>
               {t('Ακύρωση', 'Cancel')}
             </button>
             <button
               onClick={handleAddDog}
-              disabled={saving || !form.name || !form.chip_number.trim()}
-              style={{ flex: 1, background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.75rem', color: 'var(--bg)', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'Outfit, sans-serif', opacity: (saving || !form.name || !form.chip_number.trim()) ? 0.7 : 1 }}
+              disabled={saving || !isFormValid}
+              style={{
+                flex: 1, background: 'var(--accent)', border: 'none',
+                borderRadius: '8px', padding: '0.75rem', color: 'var(--bg)',
+                fontWeight: 700, cursor: (saving || !isFormValid) ? 'not-allowed' : 'pointer',
+                fontFamily: 'Outfit, sans-serif', opacity: (saving || !isFormValid) ? 0.7 : 1
+              }}
             >
               {saving ? '...' : t('Αποθήκευση', 'Save')}
             </button>
