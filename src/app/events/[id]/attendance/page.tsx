@@ -9,7 +9,6 @@ export default function AttendancePage() {
   const { id } = useParams()
   const router = useRouter()
   const supabase = createClient()
-
   const [event, setEvent] = useState<any>(null)
   const [categories, setCategories] = useState<any[]>([])
   const [session, setSession] = useState<any>(null)
@@ -32,21 +31,13 @@ export default function AttendancePage() {
         .single(),
       fetch('/auth/session').then(r => r.json())
     ])
-
     if (!eventRes.data) { router.push('/events'); return }
-
     const canAccess = sessionRes?.isAdmin || sessionRes?.user?.id === eventRes.data.created_by
     if (!canAccess) { router.push(`/events/${eventId}`); return }
-
-    if (eventRes.data.status !== 'approved') {
-      router.push(`/events/${eventId}`)
-      return
-    }
-
+    if (eventRes.data.status !== 'approved') { router.push(`/events/${eventId}`); return }
     setEvent(eventRes.data)
     setCategories(eventRes.data.event_categories || [])
     setSession(sessionRes)
-
     await loadAllRegistrations(eventId, eventRes.data.event_categories || [])
     setLoading(false)
   }
@@ -54,7 +45,6 @@ export default function AttendancePage() {
   async function loadAllRegistrations(eventId: string, cats: any[]) {
     const catIds = cats.map((c: any) => c.id)
     if (catIds.length === 0) return
-
     const { data } = await supabase
       .from('event_registrations')
       .select(`
@@ -64,9 +54,7 @@ export default function AttendancePage() {
       `)
       .in('category_id', catIds)
       .eq('status', 'confirmed')
-
     setAllRegistrations(data || [])
-
     const map: Record<string, 'attended' | 'no_show'> = {}
     ;(data || []).forEach((r: any) => {
       if (r.attendance_status === 'attended' || r.attendance_status === 'no_show') {
@@ -80,6 +68,7 @@ export default function AttendancePage() {
     setCloseLoading(true)
     setCloseMsg(null)
 
+    // ── 1. Check all participants are marked ──
     const unmarked = allRegistrations.filter(r => !attendanceMap[r.id])
     if (unmarked.length > 0) {
       setCloseMsg({
@@ -93,14 +82,42 @@ export default function AttendancePage() {
       return
     }
 
-    // Update all attendance statuses
+    // ── 2. Check every category has at least one accepted judge ──
+    const { data: allCats } = await supabase
+      .from('event_categories')
+      .select('id, title_el, title_en')
+      .eq('event_id', id)
+
+    const { data: acceptedAssignments } = await supabase
+      .from('event_assignments')
+      .select('category_id')
+      .eq('event_id', id)
+      .eq('role', 'judge')
+      .eq('status', 'accepted')
+
+    const acceptedCatIds = new Set((acceptedAssignments || []).map((a: any) => a.category_id))
+    const missingJudge = (allCats || []).find((c: any) => !acceptedCatIds.has(c.id))
+
+    if (missingJudge) {
+      setCloseMsg({
+        type: 'error',
+        text: t(
+          `Η κατηγορία "${missingJudge.title_el}" δεν έχει αποδεκτό κριτή. Κάθε κατηγορία χρειάζεται κριτή πριν το κλείσιμο.`,
+          `Category "${missingJudge.title_el}" has no accepted judge. Every category needs a judge before closing.`
+        )
+      })
+      setCloseLoading(false)
+      return
+    }
+
+    // ── 3. Update all attendance statuses ──
     await Promise.all(allRegistrations.map(r =>
       supabase.from('event_registrations')
         .update({ attendance_status: attendanceMap[r.id] })
         .eq('id', r.id)
     ))
 
-    // CHANGE: Fire no-show notifications and increment no_show_count
+    // ── 4. Fire no-show notifications and increment no_show_count ──
     const noShowRegs = allRegistrations.filter(r => attendanceMap[r.id] === 'no_show')
     if (noShowRegs.length > 0) {
       await Promise.all(noShowRegs.map((r: any) =>
@@ -114,12 +131,12 @@ export default function AttendancePage() {
             message_en: `You were marked absent from "${event.title_el}" with ${r.dogs?.name}. Please cancel in advance if you cannot attend.`,
             metadata: { event_id: id, dog_id: r.dog_id },
           }),
-         supabase.rpc('increment_no_show', { user_id_input: r.owner_id, event_id_input: id, dog_id_input: r.dog_id }),
+          supabase.rpc('increment_no_show', { user_id_input: r.owner_id, event_id_input: id, dog_id_input: r.dog_id }),
         ])
       ))
     }
 
-    // Mark event completed
+    // ── 5. Mark event completed ──
     const { error } = await supabase
       .from('events')
       .update({ status: 'completed' })
@@ -127,11 +144,38 @@ export default function AttendancePage() {
 
     if (error) {
       setCloseMsg({ type: 'error', text: t('Σφάλμα ολοκλήρωσης αγώνα', 'Error completing event') })
-    } else {
-      setCloseMsg({ type: 'success', text: t('Ο αγώνας ολοκληρώθηκε! Ανακατεύθυνση...', 'Event completed! Redirecting...') })
-      setTimeout(() => router.push(`/events/${id}`), 1500)
+      setCloseLoading(false)
+      return
     }
+
+    // ── 6. Notify every accepted judge to submit their scores ──
+    const { data: acceptedJudges } = await supabase
+      .from('event_assignments')
+      .select(`
+        user_id, category_id,
+        event_categories!event_assignments_category_id_fkey(title_el, title_en)
+      `)
+      .eq('event_id', id)
+      .eq('role', 'judge')
+      .eq('status', 'accepted')
+
+    if (acceptedJudges && acceptedJudges.length > 0) {
+      await Promise.all(acceptedJudges.map((a: any) =>
+        supabase.from('notifications').insert({
+          user_id: a.user_id,
+          type: 'score_request',
+          title_el: 'Υποβολή Αποτελεσμάτων',
+          title_en: 'Submit Scores',
+          message_el: `Ο αγώνας "${event.title_el}" ολοκληρώθηκε. Παρακαλώ υπόβαλε τα αποτελέσματα για την κατηγορία "${a.event_categories?.title_el}".`,
+          message_en: `Event "${event.title_el}" has completed. Please submit your scores for category "${a.event_categories?.title_el}".`,
+          metadata: { event_id: id, category_id: a.category_id },
+        })
+      ))
+    }
+
+    setCloseMsg({ type: 'success', text: t('Ο αγώνας ολοκληρώθηκε! Ανακατεύθυνση...', 'Event completed! Redirecting...') })
     setCloseLoading(false)
+    setTimeout(() => router.push(`/events/${id}`), 1500)
   }
 
   const regsByCategory = categories.map(cat => ({
@@ -162,12 +206,7 @@ export default function AttendancePage() {
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '0 1.5rem' }}>
-
-        <button onClick={() => router.push(`/events/${id}`)} style={{
-          background: 'none', border: 'none', color: 'var(--text-secondary)',
-          cursor: 'pointer', fontSize: '1.2rem', marginBottom: '1.5rem', padding: 0
-        }}>←</button>
-
+        <button onClick={() => router.push(`/events/${id}`)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', marginBottom: '1.5rem', padding: 0 }}>←</button>
         <h1 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '2rem', letterSpacing: '0.05em', color: 'var(--text-primary)', margin: '0 0 0.25rem' }}>
           📋 {t('Παρουσίες', 'Attendance')}
         </h1>
@@ -211,7 +250,8 @@ export default function AttendancePage() {
                     <div key={r.id} style={{
                       background: 'var(--bg)',
                       border: `1px solid ${status === 'attended' ? '#7ef7a044' : status === 'no_show' ? '#f77e7e44' : 'var(--border)'}`,
-                      borderRadius: '10px', padding: '0.75rem 1rem',
+                      borderRadius: '10px',
+                      padding: '0.75rem 1rem',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                         <div>
@@ -231,9 +271,8 @@ export default function AttendancePage() {
                               border: `1px solid ${status === 'attended' ? '#7ef7a0' : 'var(--border)'}`,
                               borderRadius: '8px', padding: '0.4rem 1rem',
                               color: status === 'attended' ? 'var(--bg)' : 'var(--text-secondary)',
-                              cursor: 'pointer', fontSize: '0.85rem',
-                              fontFamily: 'Outfit, sans-serif', fontWeight: 700,
-                              transition: 'all 0.15s', minWidth: '80px',
+                              cursor: 'pointer', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif',
+                              fontWeight: 700, transition: 'all 0.15s', minWidth: '80px',
                             }}>
                             ✓ {t('Παρών', 'Present')}
                           </button>
@@ -244,9 +283,8 @@ export default function AttendancePage() {
                               border: `1px solid ${status === 'no_show' ? '#f77e7e' : 'var(--border)'}`,
                               borderRadius: '8px', padding: '0.4rem 1rem',
                               color: status === 'no_show' ? 'var(--bg)' : 'var(--text-secondary)',
-                              cursor: 'pointer', fontSize: '0.85rem',
-                              fontFamily: 'Outfit, sans-serif', fontWeight: 700,
-                              transition: 'all 0.15s', minWidth: '80px',
+                              cursor: 'pointer', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif',
+                              fontWeight: 700, transition: 'all 0.15s', minWidth: '80px',
                             }}>
                             ✗ {t('Απών', 'Absent')}
                           </button>
@@ -284,11 +322,8 @@ export default function AttendancePage() {
             fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.2rem',
             letterSpacing: '0.05em', opacity: closeLoading ? 0.7 : 1,
           }}>
-          {closeLoading
-            ? t('Επεξεργασία...', 'Processing...')
-            : t('✅ Κλείσιμο & Ολοκλήρωση Αγώνα', '✅ Close & Complete Event')}
+          {closeLoading ? t('Επεξεργασία...', 'Processing...') : t('✅ Κλείσιμο & Ολοκλήρωση Αγώνα', '✅ Close & Complete Event')}
         </button>
-
       </div>
     </main>
   )

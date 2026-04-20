@@ -497,7 +497,7 @@ export default function CreateEventPage() {
           <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
             📌 {t('Κλικ στον χάρτη για τοποθέτηση pin', 'Click on the map to place a pin')}
           </p>
-          <p style={hintStyle}>{t('Προαιρετικό — αν δεν επιλεγεί pin, ο χάρτης δεν θα εμφανίζεται στη σελίδα αγώνα', 'Optional — if no pin selected, map will not show on event page')}</p>
+          <p style={hintStyle}>{t('Η Τοποθεσία στον χάρτη ειναι υποχρεωτική', 'A map pin is required to submit the event')}</p>
           <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)', height: '280px', marginTop: '0.5rem' }}>
             <MapPicker lat={lat} lng={lng} onSelect={(newLat, newLng) => { setLat(newLat); setLng(newLng) }} />
           </div>
@@ -638,36 +638,34 @@ export default function CreateEventPage() {
                   )}
 
                   {/* CHANGE 2: Updated requirement preview block */}
-                  {meta && cat.sport_id && (
-                    <div style={{
-                      background: 'rgba(212,175,55,0.06)',
-                      border: '1px solid rgba(212,175,55,0.2)',
-                      borderRadius: '8px',
-                      padding: '0.5rem 0.75rem',
-                      marginBottom: '0.65rem',
-                      fontSize: '0.75rem',
-                      color: 'var(--text-secondary)',
-                    }}>
-                      {(() => {
-                        if (meta.required_foundation === null && !meta.required_sport_level) {
-                          return t('✅ Ανοιχτό σε όλους — δεν απαιτείται τίτλος', '✅ Open to all — no title required')
-                        }
-                        if (meta.required_foundation === 'entry') {
-                          return t('⭐ Απαιτείται τίτλος Εισαγωγικού Επιπέδου', '⭐ Entry Level title required')
-                        }
-                        if (meta.required_foundation === 'basic' && !meta.required_sport_level) {
-                          return t('⭐⭐ Απαιτείται τίτλος Βασικού Επιπέδου', '⭐⭐ Basic Level title required')
-                        }
-                        if (meta.required_sport_level) {
-                          const sportName = t(
-                            disciplineSports.find(s => s.id === cat.sport_id)?.name_el || '',
-                            disciplineSports.find(s => s.id === cat.sport_id)?.name_en || ''
-                          )
-                          return `⭐ ${t('Απαιτείται τίτλος', 'Requires')} ${sportName} ${t('Επίπεδο', 'Level')} ${meta.required_sport_level}`
-                        }
-                      })()}
-                    </div>
-                  )}
+                 {meta && cat.sport_id && (
+  <div style={{
+    background: 'rgba(212,175,55,0.06)',
+    border: '1px solid rgba(212,175,55,0.2)',
+    borderRadius: '8px',
+    padding: '0.5rem 0.75rem',
+    marginBottom: '0.65rem',
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary)',
+  }}>
+    {(() => {
+      if (meta.required_sport_level) {
+        const sportName = t(
+          disciplineSports.find(s => s.id === cat.sport_id)?.name_el || '',
+          disciplineSports.find(s => s.id === cat.sport_id)?.name_en || ''
+        )
+        return `⭐ ${t('Απαιτείται τίτλος', 'Requires')} ${sportName} ${t('Επίπεδο', 'Level')} ${meta.required_sport_level}`
+      }
+      if (meta.required_foundation === 'basic') {
+        return t('⭐⭐ Απαιτείται τίτλος Βασικού Επιπέδου', '⭐⭐ Basic Level title required')
+      }
+      if (meta.required_foundation === 'entry') {
+        return t('⭐ Απαιτείται τίτλος Εισαγωγικού Επιπέδου', '⭐ Entry Level title required')
+      }
+      return t('✅ Ανοιχτό σε όλους — δεν απαιτείται τίτλος', '✅ Open to all — no title required')
+    })()}
+  </div>
+)}
 
                   {/* Max participants + championship */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', alignItems: 'end' }}>

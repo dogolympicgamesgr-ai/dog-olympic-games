@@ -207,15 +207,37 @@ export default function ResultsPage() {
     setApproving(true)
     setApproveMsg(null)
 
-    for (const cat of categories) {
-      for (const row of cat.rows) {
-        if (row.score === '' || row.passed === null) {
-          setApproveMsg({ type: 'error', text: t('Συμπλήρωσε βαθμολογία και αποτέλεσμα για όλες τις εγγραφές', 'Fill score and result for all entries') })
-          setApproving(false)
-          return
-        }
-      }
+ // Check every event category has at least one result submitted
+const { data: allEventCats } = await supabase
+  .from('event_categories')
+  .select('id, title_el, title_en')
+  .eq('event_id', id)
+
+const submittedCatIds = new Set(categories.map(c => c.categoryId))
+const missingCat = (allEventCats || []).find((c: any) => !submittedCatIds.has(c.id))
+
+if (missingCat) {
+  setApproveMsg({
+    type: 'error',
+    text: t(
+      `Η κατηγορία "${missingCat.title_el}" δεν έχει αποτελέσματα. Όλες οι κατηγορίες πρέπει να έχουν βαθμολογηθεί πριν την έγκριση.`,
+      `Category "${missingCat.title_el}" has no results. All categories must be scored before approval.`
+    )
+  })
+  setApproving(false)
+  return
+}
+
+// Check all submitted rows are complete
+for (const cat of categories) {
+  for (const row of cat.rows) {
+    if (row.score === '' || row.passed === null) {
+      setApproveMsg({ type: 'error', text: t('Συμπλήρωσε βαθμολογία και αποτέλεσμα για όλες τις εγγραφές', 'Fill score and result for all entries') })
+      setApproving(false)
+      return
     }
+  }
+}
 
     try {
       // 1. Update competition_results
