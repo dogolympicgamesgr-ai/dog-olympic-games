@@ -17,6 +17,14 @@ export interface SportStat {
   count: number
 }
 
+export interface JudgeQualification {
+  sport_id: string
+  sport_name_el: string
+  sport_name_en: string
+  is_foundation: boolean
+  max_sublevel: number | null
+}
+
 interface RoleProfilePageProps {
   role: 'judge' | 'organizer' | 'decoy'
   profile: {
@@ -29,22 +37,30 @@ interface RoleProfilePageProps {
     avatar_url?: string
   }
   totalEvents: number
-  totalSeminars?: number      // organizer only
+  totalSeminars?: number
   sportStats: SportStat[]
   events: RoleEvent[]
-  seminars?: RoleEvent[]      // organizer only
+  seminars?: RoleEvent[]
+  qualifications?: JudgeQualification[]
   loading: boolean
 }
 
 const ROLE_CONFIG = {
-  judge:     { icon: '⚖️', el: 'Κριτής',       en: 'Judge',     color: '#7eb8f7' },
-  organizer: { icon: '📋', el: 'Διοργανωτής',  en: 'Organizer', color: '#7ef7a0' },
-  decoy:     { icon: '🎯', el: 'Decoy',         en: 'Decoy',     color: '#f77e7e' },
+  judge:     { icon: '⚖️', el: 'Κριτής',        en: 'Judge',     color: '#7eb8f7' },
+  organizer: { icon: '📋', el: 'Διοργανωτής',   en: 'Organizer', color: '#7ef7a0' },
+  decoy:     { icon: '🎯', el: 'Decoy',          en: 'Decoy',     color: '#f77e7e' },
 }
 
 export default function RoleProfilePage({
-  role, profile, totalEvents, totalSeminars = 0,
-  sportStats, events, seminars = [], loading,
+  role,
+  profile,
+  totalEvents,
+  totalSeminars = 0,
+  sportStats,
+  events,
+  seminars = [],
+  qualifications = [],
+  loading,
 }: RoleProfilePageProps) {
   const { t } = useLang()
   const router = useRouter()
@@ -61,7 +77,14 @@ export default function RoleProfilePage({
   const displayEmail = profile.display_email || profile.email
 
   const statPill = (count: number, labelEl: string, labelEn: string) => (
-    <div style={{ background: 'var(--bg-card)', border: `1px solid ${cfg.color}44`, borderRadius: '99px', padding: '0.65rem 2rem', textAlign: 'center', boxShadow: `0 0 16px ${cfg.color}22` }}>
+    <div style={{
+      background: 'var(--bg-card)',
+      border: `1px solid ${cfg.color}44`,
+      borderRadius: '99px',
+      padding: '0.65rem 2rem',
+      textAlign: 'center',
+      boxShadow: `0 0 16px ${cfg.color}22`,
+    }}>
       <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.8rem', color: cfg.color, letterSpacing: '0.05em', margin: 0, lineHeight: 1 }}>
         {count}
       </p>
@@ -70,6 +93,16 @@ export default function RoleProfilePage({
       </p>
     </div>
   )
+
+  const foundationQuals = qualifications.filter(q => q.is_foundation)
+  const disciplineQuals = qualifications.filter(q => !q.is_foundation)
+
+  const sublevelLabel = (max: number | null) => {
+    if (!max) return ''
+    if (max === 1) return t('Επίπεδο 1', 'Level 1')
+    if (max === 2) return t('έως Επίπεδο 2', 'up to Level 2')
+    return t('έως Επίπεδο 3', 'up to Level 3')
+  }
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
@@ -100,7 +133,13 @@ export default function RoleProfilePage({
 
         {/* Avatar */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-          <div style={{ width: '180px', height: '180px', borderRadius: '50%', border: `3px solid ${cfg.color}`, background: 'var(--bg-card)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 30px ${cfg.color}22` }}>
+          <div style={{
+            width: '180px', height: '180px', borderRadius: '50%',
+            border: `3px solid ${cfg.color}`,
+            background: 'var(--bg-card)', overflow: 'hidden',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: `0 0 30px ${cfg.color}22`,
+          }}>
             {profile.avatar_url
               ? <img src={profile.avatar_url} alt={profile.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }} />
               : <span style={{ fontSize: '4.5rem' }}>🐾</span>}
@@ -120,6 +159,80 @@ export default function RoleProfilePage({
             'Seminars as Organizer',
           )}
         </div>
+
+        {/* ── Judge Qualifications — judge only ── */}
+        {role === 'judge' && qualifications.length > 0 && (
+          <div style={{
+            background: 'var(--bg-card)',
+            border: `1px solid ${cfg.color}44`,
+            borderRadius: '12px',
+            padding: '1.25rem',
+            marginBottom: '1.5rem',
+          }}>
+            <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: cfg.color, letterSpacing: '0.05em', margin: '0 0 1rem' }}>
+              ⚖️ {t('Προσόντα Κριτή', 'Judge Qualifications')}
+            </p>
+
+            {/* Foundation */}
+            {foundationQuals.length > 0 && (
+              <div style={{ marginBottom: disciplineQuals.length > 0 ? '0.85rem' : 0 }}>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 0.5rem' }}>
+                  {t('Θεμελιώδη', 'Foundation')}
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {foundationQuals.map(q => (
+                    <span key={q.sport_id} style={{
+                      background: `${cfg.color}15`,
+                      border: `1px solid ${cfg.color}44`,
+                      borderRadius: '99px',
+                      padding: '0.25rem 0.85rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      color: cfg.color,
+                    }}>
+                      ✓ {t(q.sport_name_el, q.sport_name_en)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Disciplines */}
+            {disciplineQuals.length > 0 && (
+              <div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 0.5rem' }}>
+                  {t('Πειθαρχίες', 'Disciplines')}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {disciplineQuals.map((q, i) => (
+                    <div key={q.sport_id} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '0.45rem 0',
+                      borderBottom: i < disciplineQuals.length - 1 ? '1px solid var(--border)' : 'none',
+                    }}>
+                      <p style={{ color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>
+                        {t(q.sport_name_el, q.sport_name_en)}
+                      </p>
+                      <span style={{
+                        background: `${cfg.color}15`,
+                        border: `1px solid ${cfg.color}44`,
+                        borderRadius: '99px',
+                        padding: '0.15rem 0.75rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        color: cfg.color,
+                      }}>
+                        {sublevelLabel(q.max_sublevel)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Sport breakdown */}
         {sportStats.length > 0 && (

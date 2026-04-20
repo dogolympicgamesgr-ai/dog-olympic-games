@@ -54,7 +54,7 @@ export default function DecoyPage() {
     for (const a of assignments) {
       const ev = a.events as any
       if (!ev || seenIds.has(ev.id)) continue
-      if (ev.status !== 'completed') continue
+      if (ev.status !== 'completed' && ev.status !== 'results_approved') continue
       seenIds.add(ev.id)
       eventList.push({ id: ev.id, title_el: ev.title_el, title_en: ev.title_en, event_date: ev.event_date, location: ev.location })
     }
