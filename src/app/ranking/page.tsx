@@ -38,8 +38,8 @@ export default function RankingPage() {
         .select(`
           dog_id, entry_participations, entry_title, entry_points,
           basic_participations, basic_title, basic_points,
-          dogs!foundation_ranking_dog_id_fkey(id, name, dog_id, breeds(name)),
-          profiles!foundation_ranking_owner_id_fkey(id, full_name, member_id, avatar_url)
+         dogs!ranking_dog_id_fkey(id, name, dog_id, breeds(name)),
+         profiles!ranking_owner_id_fkey(id, full_name, member_id, avatar_url)
         `)
         .or('entry_participations.gt.0,entry_title.eq.true,basic_participations.gt.0,basic_title.eq.true'),
       supabase

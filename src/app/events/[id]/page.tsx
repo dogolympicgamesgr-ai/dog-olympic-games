@@ -140,65 +140,103 @@ export default function EventDetailPage() {
 
   // ── Eligibility check on dog select ──
   async function handleDogSelect(dogId: string, catId: string) {
-    setSelectedDog(dogId)
-    setEligibilityMsg(null)
-    if (!dogId) return
+  setSelectedDog(dogId)
+  setEligibilityMsg(null)
+  if (!dogId) return
 
-    const cat = categories.find(c => c.id === catId)
-    if (!cat) return
+  const cat = categories.find(c => c.id === catId)
+  if (!cat) return
 
-    const sportId = cat.sports?.id
-    const isFoundation = cat.sports?.is_foundation
-    const isEntry = sportId === ENTRY_SPORT_ID
-    const requiredSublevel = cat.required_sport_level ? parseInt(cat.required_sport_level) : 1
+  const sportId = cat.sports?.id
+  const isFoundation = cat.sports?.is_foundation
+  const isEntry = sportId === ENTRY_SPORT_ID
+  const requiredSublevel = cat.required_sport_level ? parseInt(cat.required_sport_level) : 1
 
-    setEligibilityLoading(true)
+  setEligibilityLoading(true)
 
-    if (isFoundation) {
-      const { data: foundRank } = await supabase
-        .from('foundation_ranking')
-        .select('entry_title, basic_title')
-        .eq('dog_id', dogId)
-        .maybeSingle()
+  if (isFoundation) {
+    const { data: foundRank } = await supabase
+      .from('foundation_ranking')
+      .select('entry_title, basic_title')
+      .eq('dog_id', dogId)
+      .maybeSingle()
 
-      if (isEntry && foundRank?.entry_title) {
+    if (isEntry) {
+      // Entry Level: block if already titled
+      if (foundRank?.entry_title) {
         setEligibilityMsg(t(
-          'Αυτός ο σκύλος έχει ήδη κερδίσει τον τίτλο Εισαγωγικού Επιπέδου και δεν μπορεί να ξαναδηλώσει σε αυτή την κατηγορία.',
-          'This dog has already earned the Entry Level title and cannot register for this category again.'
-        ))
-        setSelectedDog('')
-      } else if (!isEntry && foundRank?.basic_title) {
-        setEligibilityMsg(t(
-          'Αυτός ο σκύλος έχει ήδη κερδίσει τον τίτλο Βασικού Επιπέδου και δεν μπορεί να ξαναδηλώσει σε αυτή την κατηγορία.',
-          'This dog has already earned the Basic Level title and cannot register for this category again.'
+          'Αυτός ο σκύλος έχει ήδη κερδίσει τον τίτλο Εισαγωγικού Επιπέδου.',
+          'This dog has already earned the Entry Level title.'
         ))
         setSelectedDog('')
       }
+      // Entry Level is open to all — no prerequisite needed
     } else {
-      const { data: sportRank } = await supabase
-        .from('dog_sport_ranking')
-        .select('current_sublevel, title')
-        .eq('dog_id', dogId)
-        .eq('sport_id', sportId)
-        .maybeSingle()
-
-      if (sportRank?.title) {
+      // Basic Level: block if already titled
+      if (foundRank?.basic_title) {
         setEligibilityMsg(t(
-          `Αυτός ο σκύλος έχει ολοκληρώσει και τα 3 επίπεδα στο ${cat.sports?.name_el} και δεν μπορεί να ξαναδηλώσει.`,
-          `This dog has completed all 3 sublevels in ${cat.sports?.name_en} and cannot register again.`
+          'Αυτός ο σκύλος έχει ήδη κερδίσει τον τίτλο Βασικού Επιπέδου.',
+          'This dog has already earned the Basic Level title.'
         ))
         setSelectedDog('')
-      } else if (sportRank && sportRank.current_sublevel > requiredSublevel) {
+      } else if (!foundRank?.entry_title) {
+        // Must have Entry title to enter Basic
         setEligibilityMsg(t(
-          `Αυτός ο σκύλος βρίσκεται σε επίπεδο ${sportRank.current_sublevel} και δεν μπορεί να κατεβεί σε χαμηλότερο επίπεδο.`,
-          `This dog is at sublevel ${sportRank.current_sublevel} and cannot compete at a lower sublevel.`
+          'Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο Εισαγωγικού Επιπέδου. Απαιτείται για εγγραφή στο Βασικό Επίπεδο.',
+          'This dog has not earned the Entry Level title, which is required for Basic Level.'
         ))
         setSelectedDog('')
       }
     }
+  } else {
+    // Discipline sport
+    const { data: foundRank } = await supabase
+      .from('foundation_ranking')
+      .select('basic_title')
+      .eq('dog_id', dogId)
+      .maybeSingle()
 
-    setEligibilityLoading(false)
+    const { data: sportRank } = await supabase
+      .from('dog_sport_ranking')
+      .select('current_sublevel, title')
+      .eq('dog_id', dogId)
+      .eq('sport_id', sportId)
+      .maybeSingle()
+
+    if (sportRank?.title) {
+      // Completed all levels
+      setEligibilityMsg(t(
+        `Αυτός ο σκύλος έχει ολοκληρώσει και τα 3 επίπεδα στο ${cat.sports?.name_el}.`,
+        `This dog has completed all 3 sublevels in ${cat.sports?.name_en}.`
+      ))
+      setSelectedDog('')
+    } else if (requiredSublevel === 1 && !foundRank?.basic_title) {
+      // Level 1 requires Basic title
+      setEligibilityMsg(t(
+        'Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο Βασικού Επιπέδου. Απαιτείται για συμμετοχή σε αγωνίσματα πειθαρχίας.',
+        'This dog has not earned the Basic Level title, which is required for discipline sports.'
+      ))
+      setSelectedDog('')
+    } else if (requiredSublevel > 1 && (!sportRank || sportRank.current_sublevel < requiredSublevel)) {
+      // Level 2/3 requires previous sublevel title
+      const sportName = t(cat.sports?.name_el, cat.sports?.name_en)
+      setEligibilityMsg(t(
+        `Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο ${sportName} Επίπεδο ${requiredSublevel - 1}. Απαιτείται για εγγραφή στο Επίπεδο ${requiredSublevel}.`,
+        `This dog has not earned the ${sportName} Level ${requiredSublevel - 1} title, required for Level ${requiredSublevel}.`
+      ))
+      setSelectedDog('')
+    } else if (sportRank && sportRank.current_sublevel > requiredSublevel) {
+      // Can't go back to lower sublevel
+      setEligibilityMsg(t(
+        `Αυτός ο σκύλος βρίσκεται σε επίπεδο ${sportRank.current_sublevel} και δεν μπορεί να κατεβεί σε χαμηλότερο επίπεδο.`,
+        `This dog is at sublevel ${sportRank.current_sublevel} and cannot compete at a lower sublevel.`
+      ))
+      setSelectedDog('')
+    }
   }
+
+  setEligibilityLoading(false)
+}
 
   function getQualifiedJudges(categoryId: string | null) {
     if (!categoryId) return availableJudges
