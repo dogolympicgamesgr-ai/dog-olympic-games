@@ -98,18 +98,15 @@ export default function CreateEventPage() {
     setDisciplineSports(all.filter(s => !s.is_foundation))
   }
 
-  // Derive auto title + requirements from sport + sublevel
+  // CHANGE 1: Updated deriveCategoryMeta function
   function deriveCategoryMeta(cat: Category) {
     const foundation = foundationSports.find(s => s.id === cat.sport_id)
     const discipline = disciplineSports.find(s => s.id === cat.sport_id)
     const sport = foundation || discipline
-
     if (!sport) return { title_el: '', title_en: '', required_foundation: null, required_sport_level: null }
 
     if (foundation) {
-      // Entry Level or Basic Level
-      const isEntry = !foundation.name_el.toLowerCase().includes('βασικό') &&
-        !foundation.name_en.toLowerCase().includes('basic')
+      const isEntry = !foundation.name_el.toLowerCase().includes('βασικό') && !foundation.name_en.toLowerCase().includes('basic')
       return {
         title_el: foundation.name_el,
         title_en: foundation.name_en,
@@ -118,14 +115,20 @@ export default function CreateEventPage() {
       }
     }
 
-    // Discipline with sublevel
     const sub = cat.sublevel ? parseInt(cat.sublevel) : null
     const subLabel = sub ? ` — ${t('Επίπεδο', 'Level')} ${sub}` : ''
+
+    // Level 1 → needs Basic foundation title
+    // Level 2 → needs same sport Level 1 title
+    // Level 3 → needs same sport Level 2 title
+    const required_foundation = sub === 1 ? 'basic' : null
+    const required_sport_level = sub && sub > 1 ? sub - 1 : null
+
     return {
       title_el: `${discipline!.name_el}${subLabel}`,
       title_en: `${discipline!.name_en}${sub ? ` — Level ${sub}` : ''}`,
-      required_foundation: 'basic',
-      required_sport_level: sub,
+      required_foundation,
+      required_sport_level,
     }
   }
 
@@ -198,6 +201,18 @@ export default function CreateEventPage() {
     }))
       return setError(t('Επίλεξε υποεπίπεδο για όλα τα αθλήματα πειθαρχίας', 'Select sublevel for all discipline sports'))
 
+    // CHANGE 3: Add date validation
+    const now = new Date()
+    const eventDateTime = new Date(`${eventDate}T${eventTime || '00:00'}:00`)
+    if (eventDateTime <= now) {
+      return setError(t('Η ημερομηνία του αγώνα δεν μπορεί να είναι στο παρελθόν', 'Event date cannot be in the past'))
+    }
+
+    // CHANGE 3: Add map pin validation
+    if (lat === null || lng === null) {
+      return setError(t('Απαιτείται τοποθέτηση pin στον χάρτη', 'A map pin is required'))
+    }
+
     setSubmitting(true)
 
     const { data: eventData, error: eventError } = await supabase
@@ -252,29 +267,29 @@ export default function CreateEventPage() {
       return
     }
 
-   // Notify all admins
-const { data: admins } = await supabase
-  .from('user_roles')
-  .select('user_id')
-  .eq('role', 'admin')
+    // Notify all admins
+    const { data: admins } = await supabase
+      .from('user_roles')
+      .select('user_id')
+      .eq('role', 'admin')
 
-if (admins && admins.length > 0) {
-  await supabase.from('notifications').insert(
-    admins.map((a: any) => ({
-      user_id: a.user_id,
-      type: 'event_pending',
-      title_el: 'Νέος Αγώνας προς Έγκριση',
-      title_en: 'New Event Pending Approval',
-      message_el: `Ο αγώνας "${titleEl}" υποβλήθηκε και περιμένει έγκριση.`,
-      message_en: `Event "${titleEl}" was submitted and is waiting for approval.`,
-      metadata: { event_id: eventData.id },
-    }))
-  )
-}
+    if (admins && admins.length > 0) {
+      await supabase.from('notifications').insert(
+        admins.map((a: any) => ({
+          user_id: a.user_id,
+          type: 'event_pending',
+          title_el: 'Νέος Αγώνας προς Έγκριση',
+          title_en: 'New Event Pending Approval',
+          message_el: `Ο αγώνας "${titleEl}" υποβλήθηκε και περιμένει έγκριση.`,
+          message_en: `Event "${titleEl}" was submitted and is waiting for approval.`,
+          metadata: { event_id: eventData.id },
+        }))
+      )
+    }
 
-setSuccess(true)
-setSubmitting(false)
-setTimeout(() => router.push('/events'), 1500)
+    setSuccess(true)
+    setSubmitting(false)
+    setTimeout(() => router.push('/events'), 1500)
   }
 
   if (authLoading) return (
@@ -622,19 +637,35 @@ setTimeout(() => router.push('/events'), 1500)
                     </div>
                   )}
 
-                  {/* Requirement preview */}
-                  {meta && (
+                  {/* CHANGE 2: Updated requirement preview block */}
+                  {meta && cat.sport_id && (
                     <div style={{
-                      background: 'rgba(212,175,55,0.06)', border: '1px solid rgba(212,175,55,0.2)',
-                      borderRadius: '8px', padding: '0.5rem 0.75rem', marginBottom: '0.65rem',
-                      fontSize: '0.75rem', color: 'var(--text-secondary)',
+                      background: 'rgba(212,175,55,0.06)',
+                      border: '1px solid rgba(212,175,55,0.2)',
+                      borderRadius: '8px',
+                      padding: '0.5rem 0.75rem',
+                      marginBottom: '0.65rem',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary)',
                     }}>
-                      {meta.required_foundation === null
-                        ? t('✅ Ανοιχτό σε όλους — δεν απαιτείται τίτλος', '✅ Open to all — no title required')
-                        : meta.required_foundation === 'entry'
-                          ? t('⭐ Απαιτείται τίτλος Εισαγωγικού Επιπέδου', '⭐ Entry Level title required')
-                          : t('⭐⭐ Απαιτείται τίτλος Βασικού Επιπέδου', '⭐⭐ Basic Level title required')
-                      }
+                      {(() => {
+                        if (meta.required_foundation === null && !meta.required_sport_level) {
+                          return t('✅ Ανοιχτό σε όλους — δεν απαιτείται τίτλος', '✅ Open to all — no title required')
+                        }
+                        if (meta.required_foundation === 'entry') {
+                          return t('⭐ Απαιτείται τίτλος Εισαγωγικού Επιπέδου', '⭐ Entry Level title required')
+                        }
+                        if (meta.required_foundation === 'basic' && !meta.required_sport_level) {
+                          return t('⭐⭐ Απαιτείται τίτλος Βασικού Επιπέδου', '⭐⭐ Basic Level title required')
+                        }
+                        if (meta.required_sport_level) {
+                          const sportName = t(
+                            disciplineSports.find(s => s.id === cat.sport_id)?.name_el || '',
+                            disciplineSports.find(s => s.id === cat.sport_id)?.name_en || ''
+                          )
+                          return `⭐ ${t('Απαιτείται τίτλος', 'Requires')} ${sportName} ${t('Επίπεδο', 'Level')} ${meta.required_sport_level}`
+                        }
+                      })()}
                     </div>
                   )}
 

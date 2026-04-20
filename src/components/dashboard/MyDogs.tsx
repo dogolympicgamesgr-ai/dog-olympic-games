@@ -288,7 +288,7 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
           {/* Chip Number */}
           <label style={labelStyle}>🔖 {t('Αριθμός Chip', 'Chip Number')}{requiredDot}</label>
           <input
-            style={{ ...inputStyle, border: '1px solid var(--accent)55' }}
+            style={{ ...inputStyle, border: '1px solid var(--accent)' }}
             value={form.chip_number}
             onChange={e => setForm({ ...form, chip_number: e.target.value })}
             placeholder={t('π.χ. 900182000123456', 'e.g. 900182000123456')}
