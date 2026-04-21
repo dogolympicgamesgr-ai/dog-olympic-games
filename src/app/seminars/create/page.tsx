@@ -45,6 +45,23 @@ export default function CreateSeminarPage() {
       if (!data.isAdmin && !data.roles?.includes('organizer')) { router.push('/seminars'); return }
       setSession(data)
       setChecking(false)
+      
+      // Auto-fill contact fields from profile
+      if (data.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, phone, display_email')
+          .eq('id', data.user.id)
+          .single()
+        if (profile) {
+          setForm(prev => ({
+            ...prev,
+            contact_name: profile.full_name || '',
+            contact_phone: profile.phone || '',
+            contact_email: profile.display_email || '',
+          }))
+        }
+      }
     }
     init()
   }, [])
@@ -91,11 +108,9 @@ export default function CreateSeminarPage() {
     return data.publicUrl
   }
 
-  // Helper: get today's date string in YYYY-MM-DD for the min attribute
-  const todayStr = new Date().toISOString().split('T')[0] // <-- CHANGED
+  const todayStr = new Date().toISOString().split('T')[0]
 
   async function handleSubmit() {
-    // 1. Date cannot be in the past
     if (form.seminar_date) {
       const selected = new Date(form.seminar_date + 'T00:00:00')
       const today = new Date()
@@ -118,9 +133,7 @@ export default function CreateSeminarPage() {
       setMsg({ type: 'error', text: t('Συμπλήρωσε τοποθεσία για φυσικό σεμινάριο', 'Location is required for in-person seminars') })
       return
     }
-
-    // 2. Map pin mandatory for in-person seminars
-    if (!form.is_online && (form.lat == null || form.lng == null)) { // <-- CHANGED
+    if (!form.is_online && (form.lat == null || form.lng == null)) {
       setMsg({ type: 'error', text: t('Τοποθέτησε μια καρφίτσα στον χάρτη', 'Please drop a pin on the map') })
       return
     }
@@ -185,6 +198,13 @@ export default function CreateSeminarPage() {
     <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: 'var(--accent)', letterSpacing: '0.04em', margin: '0.5rem 0 0.75rem' }}>{text}</p>
   )
 
+  // Responsive grid style: stacks below 400px
+  const responsiveGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '1rem',
+  }
+
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       <div style={{ maxWidth: '640px', margin: '0 auto', padding: '0 1.5rem' }}>
@@ -224,9 +244,25 @@ export default function CreateSeminarPage() {
                 <img src={bannerPreview} style={{ width: '100%', height: '160px', objectFit: 'cover', display: 'block' }} />
                 <button
                   onClick={() => { setBannerFile(null); setBannerPreview(null) }}
-                  style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                  style={{ 
+                    position: 'absolute', 
+                    top: '0.5rem', 
+                    right: '0.5rem', 
+                    background: 'rgba(0,0,0,0.6)', 
+                    border: 'none', 
+                    borderRadius: '6px', 
+                    color: '#fff', 
+                    cursor: 'pointer', 
+                    padding: '0.4rem 0.7rem',      // <-- CHANGED: larger touch target
+                    minWidth: '36px',               // <-- CHANGED: 36px min touch target
+                    minHeight: '36px',              // <-- CHANGED: 36px min touch target
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
                 >
-                  ✕ {t('Αφαίρεση', 'Remove')}
+                  ✕
                 </button>
               </div>
             ) : (
@@ -234,7 +270,7 @@ export default function CreateSeminarPage() {
                 onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
                 <span style={{ fontSize: '1.8rem' }}>🖼️</span>
-                {t('Κλικ για ανέβασμα banner', 'Click to upload banner')}
+                {t('Κλικ για ανέβασμα', 'Click to upload')}
                 <input type="file" accept="image/*" onChange={handleBannerChange} style={{ display: 'none' }} />
               </label>
             )}
@@ -244,23 +280,35 @@ export default function CreateSeminarPage() {
           {sectionHeader(t('Τίτλος', 'Title'))}
           <div>
             <label style={labelStyle}>{t('Τίτλος (Ελληνικά) *', 'Title (Greek) *')}</label>
-            <input style={inputStyle} value={form.title_el} onChange={e => set('title_el', e.target.value)} placeholder={t('π.χ. Εισαγωγή στην Υπακοή', 'e.g. Introduction to Obedience')} />
+            <input 
+              style={inputStyle} 
+              value={form.title_el} 
+              onChange={e => set('title_el', e.target.value)} 
+              placeholder={t('π.χ. Εισαγωγή στην Υπακοή', 'e.g. Intro to Obedience')}  // <-- CHANGED: shorter
+            />
           </div>
           <div>
             <label style={labelStyle}>{t('Τίτλος (Αγγλικά)', 'Title (English)')}</label>
-            <input style={inputStyle} value={form.title_en} onChange={e => set('title_en', e.target.value)} placeholder="e.g. Introduction to Obedience" />
+            <input 
+              style={inputStyle} 
+              value={form.title_en} 
+              onChange={e => set('title_en', e.target.value)} 
+              placeholder="e.g. Intro to Obedience"  // <-- CHANGED: shorter
+            />
           </div>
 
           {/* Date + Time */}
           {sectionHeader(t('Ημερομηνία & Ώρα', 'Date & Time'))}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          
+          {/* Responsive grid: CSS handles the stacking, inline style for base */}
+          <div className="responsive-date-grid" style={responsiveGridStyle}>
             <div>
               <label style={labelStyle}>{t('Ημερομηνία *', 'Date *')}</label>
               <input
                 type="date"
                 style={inputStyle}
                 value={form.seminar_date}
-                min={todayStr}                    // <-- CHANGED: prevents picking past dates in the calendar
+                min={todayStr}
                 onChange={e => set('seminar_date', e.target.value)}
               />
             </div>
@@ -281,21 +329,44 @@ export default function CreateSeminarPage() {
             <>
               <div>
                 <label style={labelStyle}>{t('Τοποθεσία *', 'Location *')}</label>
-                <input style={inputStyle} value={form.location} onChange={e => set('location', e.target.value)} placeholder={t('π.χ. Αθλητικό Κέντρο Θεσσαλονίκης', 'e.g. Sports Center Thessaloniki')} />
+                <input 
+                  style={inputStyle} 
+                  value={form.location} 
+                  onChange={e => set('location', e.target.value)} 
+                  placeholder={t('π.χ. Αθλ. Κέντρο Θεσ/νίκης', 'e.g. Sports Center')}  // <-- CHANGED: shorter
+                />
               </div>
               <div>
                 <label style={labelStyle}>{t('Διεύθυνση', 'Address')}</label>
-                <input style={inputStyle} value={form.address} onChange={e => set('address', e.target.value)} placeholder={t('π.χ. Λεωφόρος Νίκης 10', 'e.g. Nikis Ave 10')} />
+                <input 
+                  style={inputStyle} 
+                  value={form.address} 
+                  onChange={e => set('address', e.target.value)} 
+                  placeholder={t('π.χ. Λ. Νίκης 10', 'e.g. Nikis Ave 10')}  // <-- CHANGED: shorter
+                />
               </div>
               <div>
-                <label style={labelStyle}>{t('Τοποθεσία στον χάρτη *', 'Map location *')}</label>  {/* <-- CHANGED: added asterisk to label */}
+                <label style={labelStyle}>{t('Τοποθεσία στον χάρτη *', 'Map location *')}</label>
                 <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
                   <MapPicker lat={form.lat} lng={form.lng} onSelect={(lat, lng) => { set('lat', lat); set('lng', lng) }} />
                 </div>
                 {form.lat && form.lng && (
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.35rem' }}>
                     📍 {form.lat.toFixed(5)}, {form.lng.toFixed(5)}
-                    <button onClick={() => { set('lat', null); set('lng', null) }} style={{ background: 'none', border: 'none', color: '#f77e7e', cursor: 'pointer', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                    <button 
+                      onClick={() => { set('lat', null); set('lng', null) }} 
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        color: '#f77e7e', 
+                        cursor: 'pointer', 
+                        fontSize: '0.75rem', 
+                        marginLeft: '0.5rem',
+                        padding: '0.2rem 0.4rem',     // <-- CHANGED: padding for touch
+                        minWidth: '32px',              // <-- CHANGED: min touch target
+                        minHeight: '32px',             // <-- CHANGED: min touch target
+                      }}
+                    >
                       ✕ {t('Αφαίρεση', 'Remove')}
                     </button>
                   </p>
@@ -308,20 +379,20 @@ export default function CreateSeminarPage() {
           {sectionHeader(t('Περιγραφή', 'Description'))}
           <div>
             <label style={labelStyle}>{t('Περιγραφή (Ελληνικά)', 'Description (Greek)')}</label>
-            <textarea style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }} value={form.description_el} onChange={e => set('description_el', e.target.value)} placeholder={t('Πληροφορίες για το σεμινάριο...', 'Information about the seminar...')} />
+            <textarea style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }} value={form.description_el} onChange={e => set('description_el', e.target.value)} placeholder={t('Πληροφορίες...', 'Details...')} />
           </div>
           <div>
             <label style={labelStyle}>{t('Περιγραφή (Αγγλικά)', 'Description (English)')}</label>
-            <textarea style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }} value={form.description_en} onChange={e => set('description_en', e.target.value)} placeholder="Information about the seminar..." />
+            <textarea style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }} value={form.description_en} onChange={e => set('description_en', e.target.value)} placeholder="Details..." />
           </div>
 
           {/* Contact */}
           {sectionHeader(t('Στοιχεία Επικοινωνίας', 'Contact Information'))}
           <div>
             <label style={labelStyle}>{t('Υπεύθυνος', 'Contact Person')}</label>
-            <input style={inputStyle} value={form.contact_name} onChange={e => set('contact_name', e.target.value)} placeholder={t('Όνομα υπευθύνου', 'Contact person name')} />
+            <input style={inputStyle} value={form.contact_name} onChange={e => set('contact_name', e.target.value)} placeholder={t('Όνομα υπευθύνου', 'Name')} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div className="responsive-date-grid" style={responsiveGridStyle}>
             <div>
               <label style={labelStyle}>{t('Τηλέφωνο', 'Phone')}</label>
               <input style={inputStyle} value={form.contact_phone} onChange={e => set('contact_phone', e.target.value)} placeholder="+30 69..." type="tel" />
@@ -341,7 +412,7 @@ export default function CreateSeminarPage() {
             {submitting ? t('Υποβολή...', 'Submitting...') : t('Υποβολή για Έγκριση', 'Submit for Approval')}
           </button>
 
-          {/* Message — moved below the button */}   {/* <-- CHANGED */}
+          {/* Message below button */}
           {msg && (
             <div style={{ background: msg.type === 'success' ? 'rgba(0,200,100,0.1)' : 'rgba(220,50,50,0.1)', border: `1px solid ${msg.type === 'success' ? 'rgba(0,200,100,0.3)' : 'rgba(220,50,50,0.3)'}`, borderRadius: '10px', padding: '0.85rem', color: msg.type === 'success' ? '#00c864' : '#dc3232', fontSize: '0.88rem', fontWeight: 600 }}>
               {msg.text}

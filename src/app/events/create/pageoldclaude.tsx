@@ -16,7 +16,7 @@ interface Sport {
 
 interface Category {
   sport_id: string
-  sublevel: string
+  sublevel: string // '1' | '2' | '3' | '' (empty for foundation sports)
   max_participants: string
   is_championship: boolean
 }
@@ -35,6 +35,7 @@ export default function CreateEventPage() {
   const [success, setSuccess] = useState(false)
   const [bannerUploading, setBannerUploading] = useState(false)
 
+  // Event fields
   const [titleEl, setTitleEl] = useState('')
   const [titleEn, setTitleEn] = useState('')
   const [descEl, setDescEl] = useState('')
@@ -44,8 +45,9 @@ export default function CreateEventPage() {
   const [lat, setLat] = useState<number | null>(null)
   const [lng, setLng] = useState<number | null>(null)
 
-  const [eventDate, setEventDate] = useState('')
-  const [eventTime, setEventTime] = useState('')
+  // Native date/time inputs
+  const [eventDate, setEventDate] = useState('')   // YYYY-MM-DD
+  const [eventTime, setEventTime] = useState('')   // HH:MM
   const [regDate, setRegDate] = useState('')
   const [regTime, setRegTime] = useState('')
 
@@ -96,6 +98,7 @@ export default function CreateEventPage() {
     setDisciplineSports(all.filter(s => !s.is_foundation))
   }
 
+  // CHANGE 1: Updated deriveCategoryMeta function
   function deriveCategoryMeta(cat: Category) {
     const foundation = foundationSports.find(s => s.id === cat.sport_id)
     const discipline = disciplineSports.find(s => s.id === cat.sport_id)
@@ -115,6 +118,9 @@ export default function CreateEventPage() {
     const sub = cat.sublevel ? parseInt(cat.sublevel) : null
     const subLabel = sub ? ` — ${t('Επίπεδο', 'Level')} ${sub}` : ''
 
+    // Level 1 → needs Basic foundation title
+    // Level 2 → needs same sport Level 1 title
+    // Level 3 → needs same sport Level 2 title
     const required_foundation = sub === 1 ? 'basic' : null
     const required_sport_level = sub && sub > 1 ? sub - 1 : null
 
@@ -174,6 +180,7 @@ export default function CreateEventPage() {
   function updateCategory(index: number, field: keyof Category, value: any) {
     setCategories(prev => prev.map((cat, i) => {
       if (i !== index) return cat
+      // Reset sublevel when sport changes
       if (field === 'sport_id') return { ...cat, sport_id: value, sublevel: '' }
       return { ...cat, [field]: value }
     }))
@@ -194,12 +201,14 @@ export default function CreateEventPage() {
     }))
       return setError(t('Επίλεξε υποεπίπεδο για όλα τα αθλήματα πειθαρχίας', 'Select sublevel for all discipline sports'))
 
+    // Event date cannot be in the past
     const now = new Date()
     const eventDateTime = new Date(`${eventDate}T${eventTime || '00:00'}:00`)
     if (eventDateTime <= now) {
       return setError(t('Η ημερομηνία του αγώνα δεν μπορεί να είναι στο παρελθόν', 'Event date cannot be in the past'))
     }
 
+    // EC1: Registration deadline cannot be in the past
     if (regDate) {
       const regDateTime = new Date(`${regDate}T${regTime || '00:00'}:00`)
       if (regDateTime <= now) {
@@ -207,6 +216,7 @@ export default function CreateEventPage() {
       }
     }
 
+    // Map pin required
     if (lat === null || lng === null) {
       return setError(t('Απαιτείται τοποθέτηση pin στον χάρτη', 'A map pin is required'))
     }
@@ -265,6 +275,7 @@ export default function CreateEventPage() {
       return
     }
 
+    // Notify all admins
     const { data: admins } = await supabase
       .from('user_roles')
       .select('user_id')
@@ -313,7 +324,6 @@ export default function CreateEventPage() {
     </div>
   )
 
-  // <-- FIX 1: Added text overflow protection to inputStyle
   const inputStyle: React.CSSProperties = {
     width: '100%',
     background: 'var(--bg-card)',
@@ -325,9 +335,6 @@ export default function CreateEventPage() {
     fontFamily: 'Outfit, sans-serif',
     outline: 'none',
     boxSizing: 'border-box',
-    textOverflow: 'ellipsis',
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
   }
 
   const labelStyle: React.CSSProperties = {
@@ -360,15 +367,6 @@ export default function CreateEventPage() {
     letterSpacing: '0.04em',
   })
 
-  // <-- FIX 2: Helper for responsive grids
-  const responsiveGridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '0.75rem',
-  }
-
-  const todayStr = new Date().toISOString().split('T')[0]
-
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '0 1.5rem' }}>
@@ -391,6 +389,8 @@ export default function CreateEventPage() {
           </div>
         )}
 
+        {/* EC2: REMOVED error block from here */}
+
         {/* ── Basic Info ── */}
         <div style={sectionStyle}>
           <p style={sectionHeader('')}>{t('Βασικές Πληροφορίες', 'Basic Info')}</p>
@@ -405,12 +405,12 @@ export default function CreateEventPage() {
           </div>
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={labelStyle}>{t('Περιγραφή (Ελληνικά)', 'Description (Greek)')}</label>
-            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical', whiteSpace: 'normal' }} value={descEl} onChange={e => setDescEl(e.target.value)} />
+            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} value={descEl} onChange={e => setDescEl(e.target.value)} />
             <p style={hintStyle}>{t('Προαιρετικό', 'Optional')}</p>
           </div>
           <div>
             <label style={labelStyle}>{t('Περιγραφή (Αγγλικά)', 'Description (English)')}</label>
-            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical', whiteSpace: 'normal' }} value={descEn} onChange={e => setDescEn(e.target.value)} />
+            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} value={descEn} onChange={e => setDescEn(e.target.value)} />
             <p style={hintStyle}>{t('Προαιρετικό', 'Optional')}</p>
           </div>
         </div>
@@ -419,15 +419,13 @@ export default function CreateEventPage() {
         <div style={sectionStyle}>
           <p style={sectionHeader('')}>{t('Ημερομηνίες', 'Dates')}</p>
 
-          {/* <-- FIX 3: Responsive grid class added */}
-          <div className="responsive-date-grid" style={responsiveGridStyle}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div>
               <label style={labelStyle}>{t('Ημερομηνία Αγώνα *', 'Event Date *')}</label>
               <input
                 type="date"
                 style={inputStyle}
                 value={eventDate}
-                min={todayStr}
                 onChange={e => setEventDate(e.target.value)}
               />
             </div>
@@ -444,15 +442,13 @@ export default function CreateEventPage() {
             </div>
           </div>
 
-          {/* <-- FIX 3: Responsive grid class added */}
-          <div className="responsive-date-grid" style={responsiveGridStyle}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
             <div>
               <label style={labelStyle}>{t('Προθεσμία Εγγραφής', 'Registration Deadline')}</label>
               <input
                 type="date"
                 style={inputStyle}
                 value={regDate}
-                min={todayStr}  // <-- FIX 4: Prevent past dates in native picker
                 onChange={e => setRegDate(e.target.value)}
               />
               <p style={hintStyle}>{t('Προαιρετικό — αν κενό: ανοιχτό μέχρι την ημέρα του αγώνα', 'Optional — if blank: open until event date')}</p>
@@ -482,22 +478,14 @@ export default function CreateEventPage() {
           <p style={sectionHeader('')}>{t('Τοποθεσία', 'Location')}</p>
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={labelStyle}>{t('Όνομα Χώρου', 'Venue Name')}</label>
-            <input 
-              style={inputStyle} 
-              value={location} 
-              onChange={e => setLocation(e.target.value)}
-              placeholder={t('π.χ. Κέντρο Ολύμπου', 'e.g. Olympus Center')}  // <-- FIX 5: Shortened placeholder
-            />
+            <input style={inputStyle} value={location} onChange={e => setLocation(e.target.value)}
+              placeholder={t('π.χ. Εκπαιδευτικό Κέντρο Ολύμπου', 'e.g. Olympus Training Center')} />
             <p style={hintStyle}>{t('Προαιρετικό', 'Optional')}</p>
           </div>
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={labelStyle}>{t('Διεύθυνση', 'Address')}</label>
-            <input 
-              style={inputStyle} 
-              value={address} 
-              onChange={e => setAddress(e.target.value)}
-              placeholder={t('π.χ. Λ. Νίκης 45, Θεσ/νίκη', 'e.g. Nikis 45, Thessaloniki')}  // <-- FIX 5: Shortened placeholder
-            />
+            <input style={inputStyle} value={address} onChange={e => setAddress(e.target.value)}
+              placeholder={t('π.χ. Λεωφόρος Νίκης 45, Θεσσαλονίκη', 'e.g. Victory Ave 45, Thessaloniki')} />
             <p style={hintStyle}>{t('Προαιρετικό', 'Optional')}</p>
           </div>
           {lat !== null && lng !== null && (
@@ -514,8 +502,7 @@ export default function CreateEventPage() {
             📌 {t('Κλικ στον χάρτη για τοποθέτηση pin', 'Click on the map to place a pin')}
           </p>
           <p style={hintStyle}>{t('Η Τοποθεσία στον χάρτη ειναι υποχρεωτική', 'A map pin is required to submit the event')}</p>
-          {/* <-- FIX 6: Map height uses min() for landscape mobile */}
-          <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)', height: 'min(280px, 50vh)', marginTop: '0.5rem' }}>
+          <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)', height: '280px', marginTop: '0.5rem' }}>
             <MapPicker lat={lat} lng={lng} onSelect={(newLat, newLng) => { setLat(newLat); setLng(newLng) }} />
           </div>
         </div>
@@ -529,14 +516,13 @@ export default function CreateEventPage() {
                 <img src={bannerPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
               {lightboxOpen && (
-                <div onClick={() => setLightboxOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, cursor: 'zoom-out', padding: '1rem' }}>
+                <div onClick={() => setLightboxOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, cursor: 'zoom-out' }}>
                   <img src={bannerPreview} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '12px', objectFit: 'contain' }} />
                 </div>
               )}
             </>
           )}
-          {/* <-- FIX 7: Banner drop zone minHeight for easier thumb reach */}
-          <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: '8px', padding: '2rem', minHeight: '120px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif' }}>
+          <label style={{ display: 'inline-block', background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: '8px', padding: '0.65rem 1.25rem', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif' }}>
             {bannerUploading ? t('Συμπίεση & Ανέβασμα...', 'Compressing & Uploading...') : t('📷 Επιλογή Banner', '📷 Choose Banner')}
             <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
           </label>
@@ -554,18 +540,10 @@ export default function CreateEventPage() {
             <input style={inputStyle} value={contactName} onChange={e => setContactName(e.target.value)} />
             <p style={hintStyle}>{t('Προαιρετικό', 'Optional')}</p>
           </div>
-          {/* <-- FIX 3: Responsive grid class added */}
-          <div className="responsive-date-grid" style={responsiveGridStyle}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <label style={labelStyle}>{t('Τηλέφωνο', 'Phone')}</label>
-              {/* <-- FIX 8: Added inputMode="tel" for better mobile keyboard */}
-              <input 
-                type="tel" 
-                inputMode="tel"
-                style={inputStyle} 
-                value={contactPhone} 
-                onChange={e => setContactPhone(e.target.value)} 
-              />
+              <input style={inputStyle} value={contactPhone} onChange={e => setContactPhone(e.target.value)} />
               <p style={hintStyle}>{t('Προαιρετικό', 'Optional')}</p>
             </div>
             <div>
@@ -611,29 +589,7 @@ export default function CreateEventPage() {
                   </p>
 
                   {categories.length > 1 && (
-                    /* <-- FIX 9: Category remove button with proper touch target */
-                    <button 
-                      onClick={() => removeCategory(index)} 
-                      style={{ 
-                        position: 'absolute', 
-                        top: '0.5rem', 
-                        right: '0.5rem', 
-                        background: 'none', 
-                        border: 'none', 
-                        color: 'var(--text-secondary)', 
-                        cursor: 'pointer', 
-                        fontSize: '1rem', 
-                        padding: '0.4rem',
-                        minWidth: '36px',
-                        minHeight: '36px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: '6px',
-                      }}
-                    >
-                      ✕
-                    </button>
+                    <button onClick={() => removeCategory(index)} style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem', padding: 0 }}>✕</button>
                   )}
 
                   {/* Sport picker */}
@@ -685,34 +641,35 @@ export default function CreateEventPage() {
                     </div>
                   )}
 
-                  {meta && cat.sport_id && (
-                    <div style={{
-                      background: 'rgba(212,175,55,0.06)',
-                      border: '1px solid rgba(212,175,55,0.2)',
-                      borderRadius: '8px',
-                      padding: '0.5rem 0.75rem',
-                      marginBottom: '0.65rem',
-                      fontSize: '0.75rem',
-                      color: 'var(--text-secondary)',
-                    }}>
-                      {(() => {
-                        if (meta.required_sport_level) {
-                          const sportName = t(
-                            disciplineSports.find(s => s.id === cat.sport_id)?.name_el || '',
-                            disciplineSports.find(s => s.id === cat.sport_id)?.name_en || ''
-                          )
-                          return `⭐ ${t('Απαιτείται τίτλος', 'Requires')} ${sportName} ${t('Επίπεδο', 'Level')} ${meta.required_sport_level}`
-                        }
-                        if (meta.required_foundation === 'basic') {
-                          return t('⭐⭐ Απαιτείται τίτλος Βασικού Επιπέδου', '⭐⭐ Basic Level title required')
-                        }
-                        if (meta.required_foundation === 'entry') {
-                          return t('⭐ Απαιτείται τίτλος Εισαγωγικού Επιπέδου', '⭐ Entry Level title required')
-                        }
-                        return t('✅ Ανοιχτό σε όλους — δεν απαιτείται τίτλος', '✅ Open to all — no title required')
-                      })()}
-                    </div>
-                  )}
+                  {/* CHANGE 2: Updated requirement preview block */}
+                 {meta && cat.sport_id && (
+  <div style={{
+    background: 'rgba(212,175,55,0.06)',
+    border: '1px solid rgba(212,175,55,0.2)',
+    borderRadius: '8px',
+    padding: '0.5rem 0.75rem',
+    marginBottom: '0.65rem',
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary)',
+  }}>
+    {(() => {
+      if (meta.required_sport_level) {
+        const sportName = t(
+          disciplineSports.find(s => s.id === cat.sport_id)?.name_el || '',
+          disciplineSports.find(s => s.id === cat.sport_id)?.name_en || ''
+        )
+        return `⭐ ${t('Απαιτείται τίτλος', 'Requires')} ${sportName} ${t('Επίπεδο', 'Level')} ${meta.required_sport_level}`
+      }
+      if (meta.required_foundation === 'basic') {
+        return t('⭐⭐ Απαιτείται τίτλος Βασικού Επιπέδου', '⭐⭐ Basic Level title required')
+      }
+      if (meta.required_foundation === 'entry') {
+        return t('⭐ Απαιτείται τίτλος Εισαγωγικού Επιπέδου', '⭐ Entry Level title required')
+      }
+      return t('✅ Ανοιχτό σε όλους — δεν απαιτείται τίτλος', '✅ Open to all — no title required')
+    })()}
+  </div>
+)}
 
                   {/* Max participants + championship */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', alignItems: 'end' }}>
@@ -738,7 +695,7 @@ export default function CreateEventPage() {
           </div>
         </div>
 
-        {/* Error block — moved below categories, above submit */}
+        {/* EC2: error block moved to just above submit button */}
         {error && (
           <div style={{ background: 'rgba(220,50,50,0.1)', border: '1px solid rgba(220,50,50,0.3)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem', color: '#dc3232', fontSize: '0.9rem' }}>
             {error}

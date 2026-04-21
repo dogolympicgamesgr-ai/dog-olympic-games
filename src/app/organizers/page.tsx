@@ -46,7 +46,7 @@ export default function OrganizersPage() {
           .from('events')
           .select('*', { count: 'exact', head: true })
           .eq('created_by', p.id)
-          .eq('status', 'completed')
+          .in('status', ['completed', 'results_approved'])
         return {
           member_id: p.member_id,
           full_name: p.full_name,

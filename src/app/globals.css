@@ -103,3 +103,15 @@ h1, h2, h3, .display {
 .leaflet-bottom {
   z-index: 400 !important;
 }
+/* Responsive grid: stacks below 400px */
+@media (max-width: 400px) {
+  .responsive-date-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* Responsive grid: stacks below 400px */
+@media (max-width: 400px) {
+  .responsive-date-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
