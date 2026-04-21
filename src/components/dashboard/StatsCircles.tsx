@@ -1,11 +1,13 @@
 'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useLang } from '@/context/LanguageContext'
 
 export default function StatsCircles({ dogCount, eventCount, dogs, results }: {
   dogCount: number, eventCount: number, dogs: any[], results: any[]
 }) {
   const { t } = useLang()
+  const router = useRouter()
   const [showDogs, setShowDogs] = useState(false)
 
   const bestDog = dogs.length > 0 ? dogs[0] : null
@@ -84,10 +86,17 @@ export default function StatsCircles({ dogCount, eventCount, dogs, results }: {
               {t('Οι Σκύλοι μου', 'My Dogs')}
             </h2>
             {dogs.map(dog => (
-              <div key={dog.id} style={{
-                display: 'flex', alignItems: 'center', gap: '1rem',
-                padding: '0.75rem 0', borderBottom: '1px solid var(--border)',
-              }}>
+              <div
+                key={dog.id}
+                onClick={() => { setShowDogs(false); router.push(`/dogs/${dog.id}`) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '1rem',
+                  padding: '0.75rem 0', borderBottom: '1px solid var(--border)',
+                  cursor: 'pointer', transition: 'opacity 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+              >
                 <div style={{
                   width: '48px', height: '48px', borderRadius: '50%',
                   border: '2px solid var(--accent)', overflow: 'hidden',
