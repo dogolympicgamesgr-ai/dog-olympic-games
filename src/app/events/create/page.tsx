@@ -201,14 +201,22 @@ export default function CreateEventPage() {
     }))
       return setError(t('Επίλεξε υποεπίπεδο για όλα τα αθλήματα πειθαρχίας', 'Select sublevel for all discipline sports'))
 
-    // CHANGE 3: Add date validation
+    // Event date cannot be in the past
     const now = new Date()
     const eventDateTime = new Date(`${eventDate}T${eventTime || '00:00'}:00`)
     if (eventDateTime <= now) {
       return setError(t('Η ημερομηνία του αγώνα δεν μπορεί να είναι στο παρελθόν', 'Event date cannot be in the past'))
     }
 
-    // CHANGE 3: Add map pin validation
+    // EC1: Registration deadline cannot be in the past
+    if (regDate) {
+      const regDateTime = new Date(`${regDate}T${regTime || '00:00'}:00`)
+      if (regDateTime <= now) {
+        return setError(t('Η προθεσμία εγγραφής δεν μπορεί να είναι στο παρελθόν', 'Registration deadline cannot be in the past'))
+      }
+    }
+
+    // Map pin required
     if (lat === null || lng === null) {
       return setError(t('Απαιτείται τοποθέτηση pin στον χάρτη', 'A map pin is required'))
     }
@@ -381,11 +389,7 @@ export default function CreateEventPage() {
           </div>
         )}
 
-        {error && (
-          <div style={{ background: 'rgba(220,50,50,0.1)', border: '1px solid rgba(220,50,50,0.3)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem', color: '#dc3232', fontSize: '0.9rem' }}>
-            {error}
-          </div>
-        )}
+        {/* EC2: REMOVED error block from here */}
 
         {/* ── Basic Info ── */}
         <div style={sectionStyle}>
@@ -690,6 +694,13 @@ export default function CreateEventPage() {
             })}
           </div>
         </div>
+
+        {/* EC2: error block moved to just above submit button */}
+        {error && (
+          <div style={{ background: 'rgba(220,50,50,0.1)', border: '1px solid rgba(220,50,50,0.3)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem', color: '#dc3232', fontSize: '0.9rem' }}>
+            {error}
+          </div>
+        )}
 
         {/* ── Submit ── */}
         <button

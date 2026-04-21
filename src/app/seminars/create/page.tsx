@@ -56,7 +56,6 @@ export default function CreateSeminarPage() {
   function handleBannerChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    // Compress before storing
     const reader = new FileReader()
     reader.onload = ev => {
       const img = new Image()
@@ -92,7 +91,21 @@ export default function CreateSeminarPage() {
     return data.publicUrl
   }
 
+  // Helper: get today's date string in YYYY-MM-DD for the min attribute
+  const todayStr = new Date().toISOString().split('T')[0] // <-- CHANGED
+
   async function handleSubmit() {
+    // 1. Date cannot be in the past
+    if (form.seminar_date) {
+      const selected = new Date(form.seminar_date + 'T00:00:00')
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (selected < today) {
+        setMsg({ type: 'error', text: t('Η ημερομηνία δεν μπορεί να είναι στο παρελθόν', 'Date cannot be in the past') })
+        return
+      }
+    }
+
     if (!form.title_el.trim() || !form.seminar_date) {
       setMsg({ type: 'error', text: t('Συμπλήρωσε τίτλο και ημερομηνία', 'Title and date are required') })
       return
@@ -103,6 +116,12 @@ export default function CreateSeminarPage() {
     }
     if (!form.is_online && !form.location.trim()) {
       setMsg({ type: 'error', text: t('Συμπλήρωσε τοποθεσία για φυσικό σεμινάριο', 'Location is required for in-person seminars') })
+      return
+    }
+
+    // 2. Map pin mandatory for in-person seminars
+    if (!form.is_online && (form.lat == null || form.lng == null)) { // <-- CHANGED
+      setMsg({ type: 'error', text: t('Τοποθέτησε μια καρφίτσα στον χάρτη', 'Please drop a pin on the map') })
       return
     }
 
@@ -237,7 +256,13 @@ export default function CreateSeminarPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={labelStyle}>{t('Ημερομηνία *', 'Date *')}</label>
-              <input type="date" style={inputStyle} value={form.seminar_date} onChange={e => set('seminar_date', e.target.value)} />
+              <input
+                type="date"
+                style={inputStyle}
+                value={form.seminar_date}
+                min={todayStr}                    // <-- CHANGED: prevents picking past dates in the calendar
+                onChange={e => set('seminar_date', e.target.value)}
+              />
             </div>
             <div>
               <label style={labelStyle}>{t('Ώρα', 'Time')}</label>
@@ -263,7 +288,7 @@ export default function CreateSeminarPage() {
                 <input style={inputStyle} value={form.address} onChange={e => set('address', e.target.value)} placeholder={t('π.χ. Λεωφόρος Νίκης 10', 'e.g. Nikis Ave 10')} />
               </div>
               <div>
-                <label style={labelStyle}>{t('Τοποθεσία στον χάρτη (προαιρετικό)', 'Map location (optional)')}</label>
+                <label style={labelStyle}>{t('Τοποθεσία στον χάρτη *', 'Map location *')}</label>  {/* <-- CHANGED: added asterisk to label */}
                 <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border)' }}>
                   <MapPicker lat={form.lat} lng={form.lng} onSelect={(lat, lng) => { set('lat', lat); set('lng', lng) }} />
                 </div>
@@ -307,13 +332,7 @@ export default function CreateSeminarPage() {
             </div>
           </div>
 
-          {/* Message */}
-          {msg && (
-            <div style={{ background: msg.type === 'success' ? 'rgba(0,200,100,0.1)' : 'rgba(220,50,50,0.1)', border: `1px solid ${msg.type === 'success' ? 'rgba(0,200,100,0.3)' : 'rgba(220,50,50,0.3)'}`, borderRadius: '10px', padding: '0.85rem', color: msg.type === 'success' ? '#00c864' : '#dc3232', fontSize: '0.88rem', fontWeight: 600 }}>
-              {msg.text}
-            </div>
-          )}
-
+          {/* Submit Button */}
           <button
             onClick={handleSubmit}
             disabled={submitting || uploadingBanner}
@@ -321,6 +340,14 @@ export default function CreateSeminarPage() {
           >
             {submitting ? t('Υποβολή...', 'Submitting...') : t('Υποβολή για Έγκριση', 'Submit for Approval')}
           </button>
+
+          {/* Message — moved below the button */}   {/* <-- CHANGED */}
+          {msg && (
+            <div style={{ background: msg.type === 'success' ? 'rgba(0,200,100,0.1)' : 'rgba(220,50,50,0.1)', border: `1px solid ${msg.type === 'success' ? 'rgba(0,200,100,0.3)' : 'rgba(220,50,50,0.3)'}`, borderRadius: '10px', padding: '0.85rem', color: msg.type === 'success' ? '#00c864' : '#dc3232', fontSize: '0.88rem', fontWeight: 600 }}>
+              {msg.text}
+            </div>
+          )}
+
         </div>
       </div>
     </main>

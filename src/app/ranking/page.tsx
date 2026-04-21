@@ -117,7 +117,7 @@ export default function RankingPage() {
 
       {/* Avatar */}
       <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-card)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
-        {owner?.avatar_url ? <img src={owner.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🐕'}
+       {dog?.photo_url ? <img src={dog.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🐕'}
       </div>
 
       {/* Info */}
