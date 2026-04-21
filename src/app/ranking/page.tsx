@@ -37,8 +37,7 @@ export default function RankingPage() {
         .from('foundation_ranking')
         .select(`
           dog_id, entry_participations, entry_title, entry_points,
-          basic_participations, basic_title, basic_points,
-         dogs!ranking_dog_id_fkey(id, name, dog_id, breeds(name)),
+         dogs!ranking_dog_id_fkey(id, name, dog_id, photo_url, breeds(name)),
          profiles!ranking_owner_id_fkey(id, full_name, member_id, avatar_url)
         `)
         .or('entry_participations.gt.0,entry_title.eq.true,basic_participations.gt.0,basic_title.eq.true'),
@@ -46,7 +45,7 @@ export default function RankingPage() {
         .from('dog_sport_ranking')
         .select(`
           dog_id, sport_id, current_sublevel, participations, title, total_points,
-          dogs!dog_sport_ranking_dog_id_fkey(id, name, dog_id, breeds(name)),
+          dogs!dog_sport_ranking_dog_id_fkey(id, name, dog_id, photo_url, breeds(name)),
           profiles!dog_sport_ranking_owner_id_fkey(id, full_name, member_id, avatar_url)
         `)
         .or('participations.gt.0,title.eq.true'),

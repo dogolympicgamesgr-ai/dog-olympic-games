@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
@@ -31,6 +31,13 @@ export default function Navbar() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [roles, setRoles] = useState<string[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
+  
+  // Attention/flash notification states
+  const [pendingJudge, setPendingJudge] = useState(false)
+  const [pendingDecoy, setPendingDecoy] = useState(false)
+  const [pendingOrganizer, setPendingOrganizer] = useState(false)
+  const [pendingTeam, setPendingTeam] = useState(false)
+  
   const [aboutOpen, setAboutOpen] = useState(false)
   const [communityOpen, setCommunityOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -52,10 +59,47 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  async function fetchUnreadCount(userId: string) {
+    const { count } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('read', false)
+    setUnreadCount(count || 0)
+  }
+
+  async function fetchAttentionFlags(userId: string, userRoles: string[]) {
+    const now = new Date().toISOString()
+    const [judgeRes, decoyRes, orgRes, teamRes] = await Promise.all([
+      userRoles.includes('judge')
+        ? supabase.from('event_assignments').select('id', { count: 'exact', head: true })
+            .eq('user_id', userId).eq('role', 'judge').eq('status', 'pending')
+        : Promise.resolve({ count: 0 }),
+      userRoles.includes('decoy')
+        ? supabase.from('event_assignments').select('id', { count: 'exact', head: true })
+            .eq('user_id', userId).eq('role', 'decoy').eq('status', 'pending')
+        : Promise.resolve({ count: 0 }),
+      userRoles.includes('organizer')
+        ? supabase.from('events').select('id', { count: 'exact', head: true })
+            .eq('created_by', userId)
+            .or(`status.eq.pending,and(status.eq.approved,event_date.gt.${now})`)
+        : Promise.resolve({ count: 0 }),
+      supabase.from('team_members').select('id', { count: 'exact', head: true })
+        .eq('user_id', userId).eq('status', 'pending'),
+    ])
+    setPendingJudge((judgeRes.count || 0) > 0)
+    setPendingDecoy((decoyRes.count || 0) > 0)
+    setPendingOrganizer((orgRes.count || 0) > 0)
+    setPendingTeam((teamRes.count || 0) > 0)
+  }
+
   useEffect(() => {
     setDrawerOpen(false)
-    if (user) fetchUnreadCount(user.id)
-  }, [pathname])
+    if (user) {
+      fetchUnreadCount(user.id)
+      fetchAttentionFlags(user.id, roles)
+    }
+  }, [pathname, user, roles])
 
   useEffect(() => {
     async function init() {
@@ -68,6 +112,7 @@ export default function Navbar() {
           setIsAdmin(data.isAdmin)
           setRoles(data.roles || [])
           fetchUnreadCount(data.user.id)
+          fetchAttentionFlags(data.user.id, data.roles || [])
         }
       } catch (err) {
         console.error('session fetch error:', err)
@@ -79,6 +124,8 @@ export default function Navbar() {
       if (!session?.user) {
         setUser(null); setProfileName(''); setIsAdmin(false)
         setRoles([]); setUnreadCount(0)
+        setPendingJudge(false); setPendingDecoy(false)
+        setPendingOrganizer(false); setPendingTeam(false)
       } else {
         try {
           const res = await fetch('/auth/session')
@@ -88,26 +135,18 @@ export default function Navbar() {
           setIsAdmin(data.isAdmin)
           setRoles(data.roles || [])
           fetchUnreadCount(data.user.id)
+          fetchAttentionFlags(data.user.id, data.roles || [])
         } catch {}
       }
     })
     return () => subscription.unsubscribe()
-  }, [])
+  }, [supabase])
 
   useEffect(() => {
     function onDashboardDrawer() { setDrawerOpen(true) }
     window.addEventListener('open-dashboard-drawer', onDashboardDrawer)
     return () => window.removeEventListener('open-dashboard-drawer', onDashboardDrawer)
   }, [])
-
-  async function fetchUnreadCount(userId: string) {
-    const { count } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('read', false)
-    setUnreadCount(count || 0)
-  }
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
@@ -399,19 +438,33 @@ export default function Navbar() {
                     </Link>
                   )}
 
-                  {/* Role panels — now live links */}
+                  {/* Role panels with attention animation */}
                   {roles.includes('judge') && (
-                    <Link href="/judge-panel" style={drawerLinkStyle(pathname === '/judge-panel')}>
+                    <Link 
+                      href="/judge-panel" 
+                      style={drawerLinkStyle(pathname === '/judge-panel')}
+                      className={pendingJudge ? 'nav-attention' : ''}
+                    >
                       ⚖️ {t('Πίνακας Κριτή', 'Judge Panel')}
                     </Link>
                   )}
+                  
                   {roles.includes('organizer') && (
-                    <Link href="/organizer-panel" style={drawerLinkStyle(pathname === '/organizer-panel')}>
+                    <Link 
+                      href="/organizer-panel" 
+                      style={drawerLinkStyle(pathname === '/organizer-panel')}
+                      className={pendingOrganizer ? 'nav-attention' : ''}
+                    >
                       📋 {t('Πίνακας Διοργανωτή', 'Organizer Panel')}
                     </Link>
                   )}
+                  
                   {roles.includes('decoy') && (
-                    <Link href="/decoy-panel" style={drawerLinkStyle(pathname === '/decoy-panel')}>
+                    <Link 
+                      href="/decoy-panel" 
+                      style={drawerLinkStyle(pathname === '/decoy-panel')}
+                      className={pendingDecoy ? 'nav-attention' : ''}
+                    >
                       🎯 {t('Πίνακας Decoy', 'Decoy Panel')}
                     </Link>
                   )}
@@ -435,7 +488,11 @@ export default function Navbar() {
                       <Link href="/profile/dogs" style={drawerLinkStyle(pathname === '/profile/dogs')}>
                         🐕 {t('Οι Σκύλοι μου', 'My Dogs')}
                       </Link>
-                      <Link href="/profile/team" style={drawerLinkStyle(pathname === '/profile/team')}>
+                      <Link 
+                        href="/profile/team" 
+                        style={drawerLinkStyle(pathname === '/profile/team')}
+                        className={pendingTeam ? 'nav-attention' : ''}
+                      >
                         👥 {t('Η Ομάδα μου', 'My Team')}
                       </Link>
                     </div>
@@ -457,6 +514,17 @@ export default function Navbar() {
       <style>{`
         .hamburger-always { display: flex !important; }
         .hamburger-mobile { display: none; }
+        
+        @keyframes attentionGlow {
+          0%, 100% { text-shadow: 0 0 6px var(--accent); opacity: 1; }
+          50% { text-shadow: 0 0 14px var(--accent), 0 0 24px var(--accent); opacity: 0.85; }
+        }
+        
+        .nav-attention {
+          animation: attentionGlow 2s ease-in-out infinite;
+          color: var(--accent) !important;
+        }
+        
         @media (max-width: 768px) {
           .desktop-nav { display: none !important; }
           .hamburger-mobile { display: flex !important; }
