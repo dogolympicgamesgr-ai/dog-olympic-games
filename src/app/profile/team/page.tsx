@@ -16,6 +16,7 @@ export default function MyTeamPage() {
   const [members, setMembers] = useState<any[]>([])
   const [pendingRequests, setPendingRequests] = useState<any[]>([])
   const [myPendingRequests, setMyPendingRequests] = useState<any[]>([])
+  const [myPendingInvites, setMyPendingInvites] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<View>('main')
   const [saving, setSaving] = useState(false)
@@ -66,23 +67,25 @@ export default function MyTeamPage() {
     } else {
       const { data: myPending } = await supabase
         .from('team_members')
-        .select('id, team_id, teams(id, name, avatar_url)')
+        .select('id, team_id, invited_by, teams(id, name, avatar_url)')
         .eq('user_id', user.id)
         .eq('status', 'pending')
-      setMyPendingRequests(myPending || [])
+
+      const selfRequests = (myPending || []).filter((r: any) => r.invited_by === user.id)
+      const incomingInvites = (myPending || []).filter((r: any) => r.invited_by !== user.id)
+      setMyPendingRequests(selfRequests)
+      setMyPendingInvites(incomingInvites)
     }
 
     setLoading(false)
   }
-//console in here
+
   async function loadTeamData(teamId: string, userId: string, captainId: string) {
     const { data: mems, error: memsError } = await supabase
       .from('team_members')
       .select('id, user_id, profiles!team_members_user_id_fkey(id, full_name, avatar_url, member_id)')
       .eq('team_id', teamId)
       .eq('status', 'accepted')
-      // console.log('mems:', JSON.stringify(mems))
-     // console.log('mems error:', memsError)
     setMembers(mems || [])
 
     if (userId === captainId) {
@@ -163,6 +166,34 @@ export default function MyTeamPage() {
   async function handleCancelRequest(requestId: string) {
     await supabase.from('team_members').delete().eq('id', requestId)
     showMsg(t('Αίτημα ακυρώθηκε', 'Request cancelled'))
+    await init()
+  }
+
+async function handleAcceptInvite(rowId: string, teamId: string, teamName: string, captainId: string) {
+  setSaving(true)
+  const { error } = await supabase.from('team_members')
+    .update({ status: 'accepted', joined_at: new Date().toISOString() })
+    .eq('id', rowId)
+  if (error) {
+    showMsg(t('Σφάλμα αποδοχής πρόσκλησης', 'Error accepting invite'), 'error')
+    setSaving(false)
+    return
+  }
+  await supabase.from('notifications').insert({
+    user_id: captainId, type: 'team_invite_accepted',
+    title_el: 'Αποδοχή Πρόσκλησης', title_en: 'Invite Accepted',
+    message_el: `Ένα μέλος αποδέχθηκε την πρόσκλησή σου για την ομάδα "${teamName}"!`,
+    message_en: `A member accepted your invitation to join "${teamName}"!`,
+    metadata: { team_id: teamId },
+  })
+  setSaving(false)
+  showMsg(t('Μπήκες στην ομάδα!', 'You joined the team!'))
+  await init()
+}
+
+  async function handleDeclineInvite(rowId: string) {
+    await supabase.from('team_members').delete().eq('id', rowId)
+    showMsg(t('Πρόσκληση απορρίφθηκε', 'Invite declined'))
     await init()
   }
 
@@ -349,6 +380,47 @@ export default function MyTeamPage() {
             </p>
             <button onClick={() => setView('create')} style={btnPrimary}>🛡️ {t('Δημιουργία Ομάδας', 'Create Team')}</button>
             <button onClick={() => setView('join')} style={btnSecondary}>🔍 {t('Εύρεση & Αίτημα', 'Find & Request to Join')}</button>
+
+            {myPendingInvites.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <p style={{ fontSize: '0.78rem', color: 'var(--accent)', marginBottom: '0.5rem', fontWeight: 600 }}>
+                  ✉️ {t('Προσκλήσεις σε ομάδα', 'Team Invitations')}
+                </p>
+                {myPendingInvites.map((inv: any) => (
+                  <div key={inv.id} style={{ ...card, marginBottom: '0.5rem', padding: '0.85rem 1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      {(inv.teams as any)?.avatar_url
+                        ? <img src={(inv.teams as any).avatar_url} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                        : <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🛡️</div>
+                      }
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                          {(inv.teams as any)?.name}
+                        </p>
+                        <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                          {t('Σε προσκαλούν σε αυτή την ομάδα', 'You\'ve been invited to this team')}
+                        </p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => handleAcceptInvite(inv.id, (inv.teams as any)?.id, (inv.teams as any)?.name, inv.invited_by)}
+                        disabled={saving}
+                        style={{ flex: 1, background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.55rem', color: 'var(--bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem' }}
+                      >
+                        {t('Αποδοχή', 'Accept')}
+                      </button>
+                      <button
+                        onClick={() => handleDeclineInvite(inv.id)}
+                        style={{ flex: 1, ...btnDanger, width: 'auto', textAlign: 'center' as const }}
+                      >
+                        {t('Απόρριψη', 'Decline')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {myPendingRequests.length > 0 && (
               <div style={{ marginTop: '1rem' }}>
