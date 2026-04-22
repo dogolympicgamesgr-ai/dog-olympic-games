@@ -17,6 +17,7 @@ export default function OrganizerPanelPage() {
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<EventFilter>('pending')
   const [cancelling, setCancelling] = useState<string | null>(null)
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
     async function init() {
@@ -25,6 +26,18 @@ export default function OrganizerPanelPage() {
       if (!user) { router.push('/'); return }
       if (!roles?.includes('organizer')) { router.push('/dashboard'); return }
       setUserId(user.id)
+      
+      const [pendingRes, approvedRes] = await Promise.all([
+        supabase.from('events').select('id', { count: 'exact', head: true })
+          .eq('created_by', user.id).eq('status', 'pending'),
+        supabase.from('events').select('id', { count: 'exact', head: true })
+          .eq('created_by', user.id).eq('status', 'approved'),
+      ])
+      setTabCounts({
+        pending: pendingRes.count || 0,
+        approved: approvedRes.count || 0,
+      })
+      
       setChecking(false)
     }
     init()
@@ -68,12 +81,12 @@ export default function OrganizerPanelPage() {
     s === 'cancelled' ? '#f77e7e' :
     'var(--accent)'
 
-  const tabStyle = (tab: EventFilter) => ({
+  const tabStyle = (tab: EventFilter, glow = false) => ({
     background: filter === tab ? 'var(--accent)' : 'var(--bg-card)',
     border: '1px solid var(--border)',
     borderRadius: '6px',
     padding: '0.4rem 1rem',
-    color: filter === tab ? 'var(--bg)' : 'var(--text-secondary)',
+    color: filter === tab ? 'var(--bg)' : glow ? 'var(--accent)' : 'var(--text-secondary)',
     cursor: 'pointer',
     fontFamily: 'Outfit, sans-serif',
     fontWeight: filter === tab ? 700 : 400,
@@ -121,16 +134,22 @@ export default function OrganizerPanelPage() {
 
         {/* Filter tabs */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          {(['pending', 'approved', 'completed', 'cancelled'] as EventFilter[]).map(s => (
-            <button key={s} onClick={() => setFilter(s)} style={tabStyle(s)}>{t(
-              s === 'pending' ? 'Σε Αναμονή' :
-              s === 'approved' ? 'Εγκεκριμένοι' :
-              s === 'completed' ? 'Ολοκληρωμένοι' : 'Ακυρωμένοι',
-              s === 'pending' ? 'Pending' :
-              s === 'approved' ? 'Approved' :
-              s === 'completed' ? 'Completed' : 'Cancelled'
-            )}</button>
-          ))}
+          {(['pending', 'approved', 'completed', 'cancelled'] as EventFilter[]).map(s => {
+            const glow = (s === 'pending' || s === 'approved') && (tabCounts[s] || 0) > 0 && filter !== s
+            return (
+              <button
+                key={s}
+                onClick={() => setFilter(s)}
+                style={tabStyle(s, glow)}
+                className={glow ? 'nav-attention' : ''}
+              >
+                {t(
+                  s === 'pending' ? 'Σε Αναμονή' : s === 'approved' ? 'Εγκεκριμένοι' : s === 'completed' ? 'Ολοκληρωμένοι' : 'Ακυρωμένοι',
+                  s === 'pending' ? 'Pending' : s === 'approved' ? 'Approved' : s === 'completed' ? 'Completed' : 'Cancelled'
+                )}
+              </button>
+            )
+          })}
         </div>
 
         {/* Events list */}

@@ -254,23 +254,33 @@ export default function EventDetailPage() {
     })
   }
 
-  async function handleInvite() {
-    if (!selectedInviteUser || !invitingRole || !session?.user) return
-    setAssignLoading(true)
-    setAssignMsg(null)
-    const { error } = await supabase.from('event_assignments').insert({
-      event_id: id, category_id: invitingRole.categoryId || null,
-      user_id: selectedInviteUser, role: invitingRole.role,
-      status: 'pending', assigned_by: session.user.id,
-    })
-    if (error) {
-      setAssignMsg({ type: 'error', text: t('Σφάλμα. Ίσως έχει ήδη προσκληθεί.', 'Error. They may already be invited.') })
-    } else {
-      const categoryLabel = invitingRole.categoryId
-        ? categories.find(c => c.id === invitingRole.categoryId)?.title_el || '' : ''
-      const eventTitle = event?.title_el || ''
-      const roleLabel = invitingRole.role === 'judge' ? 'Κριτής' : 'Δόλωμα'
-      const roleLabelEn = invitingRole.role === 'judge' ? 'Judge' : 'Decoy'
+async function handleInvite() {
+  if (!selectedInviteUser || !invitingRole || !session?.user) return
+  setAssignLoading(true)
+  setAssignMsg(null)
+
+  const isSelfInvite = selectedInviteUser === session.user.id
+  const status = isSelfInvite ? 'accepted' : 'pending'
+
+  const { error } = await supabase.from('event_assignments').insert({
+    event_id: id,
+    category_id: invitingRole.categoryId || null,
+    user_id: selectedInviteUser,
+    role: invitingRole.role,
+    status,
+    assigned_by: session.user.id,
+  })
+
+  if (error) {
+    setAssignMsg({ type: 'error', text: t('Σφάλμα. Ίσως έχει ήδη προσκληθεί.', 'Error. They may already be invited.') })
+  } else {
+    const categoryLabel = invitingRole.categoryId
+      ? categories.find(c => c.id === invitingRole.categoryId)?.title_el || '' : ''
+    const eventTitle = event?.title_el || ''
+    const roleLabel = invitingRole.role === 'judge' ? 'Κριτής' : 'Δόλωμα'
+    const roleLabelEn = invitingRole.role === 'judge' ? 'Judge' : 'Decoy'
+
+    if (!isSelfInvite) {
       await supabase.from('notifications').insert({
         user_id: selectedInviteUser, type: 'assignment_request',
         title_el: `Πρόσκληση ως ${roleLabel}`, title_en: `Invitation as ${roleLabelEn}`,
@@ -278,13 +288,15 @@ export default function EventDetailPage() {
         message_en: `You have been invited as ${roleLabelEn}${categoryLabel ? ` for category "${categoryLabel}"` : ''} in event "${eventTitle}".`,
         metadata: { event_id: id, role: invitingRole.role, category_id: invitingRole.categoryId },
       })
-      setAssignMsg({ type: 'success', text: t('Πρόσκληση στάλθηκε!', 'Invitation sent!') })
-      setInvitingRole(null)
-      setSelectedInviteUser('')
-      await loadAssignments(id as string, session)
     }
-    setAssignLoading(false)
+
+    setAssignMsg({ type: 'success', text: t('Προστέθηκες!', isSelfInvite ? 'Added!' : 'Invitation sent!') })
+    setInvitingRole(null)
+    setSelectedInviteUser('')
+    await loadAssignments(id as string, session)
   }
+  setAssignLoading(false)
+}
 
   async function handleRemoveAssignment(assignmentId: string) {
     setAssignLoading(true)
