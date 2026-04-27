@@ -1,6 +1,6 @@
 {
   "name": "CanAthlon",
-  "short_name": "DOG Olympics",
+  "short_name": "CanAthlon",
   "description": "The official platform for CanAthlon",
   "start_url": "/",
   "display": "standalone",

@@ -82,16 +82,9 @@ export default function Home() {
             color: 'var(--text-primary)',
             marginBottom: '0.5rem',
           }}>
-            DOG OLYMPIC
+            C A N A T H L O N 
           </h1>
-          <h1 style={{
-            fontSize: 'clamp(3rem, 10vw, 7rem)',
-            lineHeight: 0.95,
-            color: 'var(--accent)',
-            marginBottom: '1.5rem',
-          }}>
-            GAMES
-          </h1>
+          
 
           <p style={{
             fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
