@@ -255,7 +255,7 @@ export default function Navbar() {
             textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.4rem',
           }}>
             <span>🐾</span>
-            <span className="logo-text">DOG OLYMPIC GAMES</span>
+            <span className="logo-text">CanAthlon</span>
           </Link>
         </div>
 
@@ -358,7 +358,7 @@ export default function Navbar() {
               flexShrink: 0,
             }}>
               <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.1rem', color: 'var(--accent)', letterSpacing: '0.05em' }}>
-                🐾 DOG OLYMPIC GAMES
+                🐾 CanAthlon
               </span>
               <button onClick={() => setDrawerOpen(false)} style={{
                 background: 'none', border: 'none',

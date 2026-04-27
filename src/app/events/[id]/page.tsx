@@ -139,7 +139,7 @@ export default function EventDetailPage() {
   }
 
   // ── Eligibility check on dog select ──
-  async function handleDogSelect(dogId: string, catId: string) {
+async function handleDogSelect(dogId: string, catId: string) {
   setSelectedDog(dogId)
   setEligibilityMsg(null)
   if (!dogId) return
@@ -157,26 +157,26 @@ export default function EventDetailPage() {
   if (isFoundation) {
     const { data: foundRank } = await supabase
       .from('foundation_ranking')
-      .select('entry_title, basic_title')
+      .select('entry_title, entry_locked, basic_title, basic_locked')
       .eq('dog_id', dogId)
       .maybeSingle()
 
     if (isEntry) {
-      // Entry Level: block if already titled
-      if (foundRank?.entry_title) {
+      // Entry Level: blocked only if dog has already attempted Basic (entry_locked)
+      if (foundRank?.entry_locked) {
         setEligibilityMsg(t(
-          'Αυτός ο σκύλος έχει ήδη κερδίσει τον τίτλο Εισαγωγικού Επιπέδου.',
-          'This dog has already earned the Entry Level title.'
+          'Αυτός ο σκύλος έχει ήδη συμμετάσχει σε Βασικό Επίπεδο και δεν μπορεί να επιστρέψει στο Εισαγωγικό.',
+          'This dog has already competed at Basic Level and cannot return to Entry Level.'
         ))
         setSelectedDog('')
       }
-      // Entry Level is open to all — no prerequisite needed
+      // Entry is otherwise open to all — no prerequisite
     } else {
-      // Basic Level: block if already titled
-      if (foundRank?.basic_title) {
+      // Basic Level: blocked if dog has already attempted a discipline (basic_locked)
+      if (foundRank?.basic_locked) {
         setEligibilityMsg(t(
-          'Αυτός ο σκύλος έχει ήδη κερδίσει τον τίτλο Βασικού Επιπέδου.',
-          'This dog has already earned the Basic Level title.'
+          'Αυτός ο σκύλος έχει ήδη συμμετάσχει σε αγώνισμα πειθαρχίας και δεν μπορεί να επιστρέψει στο Βασικό Επίπεδο.',
+          'This dog has already competed in a discipline sport and cannot return to Basic Level.'
         ))
         setSelectedDog('')
       } else if (!foundRank?.entry_title) {
@@ -204,7 +204,7 @@ export default function EventDetailPage() {
       .maybeSingle()
 
     if (sportRank?.title) {
-      // Completed all levels
+      // Completed all sublevels
       setEligibilityMsg(t(
         `Αυτός ο σκύλος έχει ολοκληρώσει και τα 3 επίπεδα στο ${cat.sports?.name_el}.`,
         `This dog has completed all 3 sublevels in ${cat.sports?.name_en}.`

@@ -1,4 +1,5 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
@@ -37,7 +38,7 @@ interface CategoryResult {
   sportName: string
   sportId: string
   isFoundation: boolean
-  isEntry: boolean  // true = entry level, false = basic level (for foundation sports)
+  isEntry: boolean
   rows: ResultRow[]
 }
 
@@ -55,14 +56,15 @@ export default function ResultsPage() {
   const [approveMsg, setApproveMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [alreadyApproved, setAlreadyApproved] = useState(false)
 
-  useEffect(() => { if (id) load(id as string) }, [id])
+  useEffect(() => {
+    if (id) load(id as string)
+  }, [id])
 
   async function load(eventId: string) {
     const [eventRes, sessionRes] = await Promise.all([
       supabase.from('events').select('id, title_el, title_en, status').eq('id', eventId).single(),
       fetch('/auth/session').then(r => r.json())
     ])
-
     if (!eventRes.data) { router.push('/events'); return }
     if (!sessionRes?.isAdmin) { router.push(`/events/${eventId}`); return }
     if (eventRes.data.status !== 'completed') { router.push(`/events/${eventId}`); return }
@@ -91,18 +93,16 @@ export default function ResultsPage() {
     const dogIds = [...new Set(results.map((r: any) => r.dog_id))]
     const { data: rankings } = await supabase
       .from('foundation_ranking')
-      .select('dog_id, entry_participations, entry_title, entry_points, basic_participations, basic_title, basic_points')
+      .select('dog_id, entry_participations, entry_title, entry_points, entry_top2_points, basic_participations, basic_title, basic_points, basic_top2_points')
       .in('dog_id', dogIds)
 
     const rankMap: Record<string, any> = {}
     ;(rankings || []).forEach((r: any) => { rankMap[r.dog_id] = r })
 
     const catMap: Record<string, CategoryResult> = {}
-
     for (const r of results) {
       const cat = r.event_categories as any
       if (!cat) continue
-
       const sportId = cat.sports?.id
       const isFoundation = cat.sports?.is_foundation ?? true
       const isEntry = sportId === ENTRY_SPORT_ID
@@ -121,14 +121,13 @@ export default function ResultsPage() {
       }
 
       const rank = rankMap[r.dog_id] || {
-        entry_participations: 0, entry_title: false, entry_points: 0,
-        basic_participations: 0, basic_title: false, basic_points: 0,
+        entry_participations: 0, entry_title: false, entry_points: 0, entry_top2_points: 0,
+        basic_participations: 0, basic_title: false, basic_points: 0, basic_top2_points: 0,
       }
 
-      // Determine title prediction — branch on actual sport, not title chain
+      // Title prediction: needs 2 passes, but only if dog doesn't have title yet
       let willGetTitle = false
       let nextLevel = ''
-
       if (r.passed && isFoundation) {
         if (isEntry && !rank.entry_title) {
           if (rank.entry_participations + 1 >= 2) {
@@ -157,10 +156,10 @@ export default function ResultsPage() {
         status: r.status,
         entryParticipations: rank.entry_participations,
         entryTitle: rank.entry_title,
-        entryPoints: rank.entry_points,
+        entryPoints: rank.entry_top2_points, // show top2 in UI
         basicParticipations: rank.basic_participations,
         basicTitle: rank.basic_title,
-        basicPoints: rank.basic_points,
+        basicPoints: rank.basic_top2_points, // show top2 in UI
         willGetTitle,
         nextLevel,
       })
@@ -178,7 +177,6 @@ export default function ResultsPage() {
         rows: cat.rows.map((row, ri) => {
           if (ri !== rowIndex) return row
           let updated = { ...row, [field]: value }
-
           if (field === 'passed' && cat.isFoundation) {
             let willGetTitle = false
             let nextLevel = ''
@@ -207,40 +205,39 @@ export default function ResultsPage() {
     setApproving(true)
     setApproveMsg(null)
 
- // Check every event category has at least one result submitted
-const { data: allEventCats } = await supabase
-  .from('event_categories')
-  .select('id, title_el, title_en')
-  .eq('event_id', id)
+    // Check every event category has at least one result submitted
+    const { data: allEventCats } = await supabase
+      .from('event_categories')
+      .select('id, title_el, title_en')
+      .eq('event_id', id)
 
-const submittedCatIds = new Set(categories.map(c => c.categoryId))
-const missingCat = (allEventCats || []).find((c: any) => !submittedCatIds.has(c.id))
-
-if (missingCat) {
-  setApproveMsg({
-    type: 'error',
-    text: t(
-      `Η κατηγορία "${missingCat.title_el}" δεν έχει αποτελέσματα. Όλες οι κατηγορίες πρέπει να έχουν βαθμολογηθεί πριν την έγκριση.`,
-      `Category "${missingCat.title_el}" has no results. All categories must be scored before approval.`
-    )
-  })
-  setApproving(false)
-  return
-}
-
-// Check all submitted rows are complete
-for (const cat of categories) {
-  for (const row of cat.rows) {
-    if (row.score === '' || row.passed === null) {
-      setApproveMsg({ type: 'error', text: t('Συμπλήρωσε βαθμολογία και αποτέλεσμα για όλες τις εγγραφές', 'Fill score and result for all entries') })
+    const submittedCatIds = new Set(categories.map(c => c.categoryId))
+    const missingCat = (allEventCats || []).find((c: any) => !submittedCatIds.has(c.id))
+    if (missingCat) {
+      setApproveMsg({ type: 'error', text: t(
+        `Η κατηγορία "${missingCat.title_el}" δεν έχει αποτελέσματα. Όλες οι κατηγορίες πρέπει να έχουν βαθμολογηθεί πριν την έγκριση.`,
+        `Category "${missingCat.title_el}" has no results. All categories must be scored before approval.`
+      )})
       setApproving(false)
       return
     }
-  }
-}
+
+    // Check all rows are complete
+    for (const cat of categories) {
+      for (const row of cat.rows) {
+        if (row.score === '' || row.passed === null) {
+          setApproveMsg({ type: 'error', text: t(
+            'Συμπλήρωσε βαθμολογία και αποτέλεσμα για όλες τις εγγραφές',
+            'Fill score and result for all entries'
+          )})
+          setApproving(false)
+          return
+        }
+      }
+    }
 
     try {
-      // 1. Update competition_results
+      // 1. Update competition_results rows
       for (const cat of categories) {
         for (const row of cat.rows) {
           await supabase
@@ -253,76 +250,133 @@ for (const cat of categories) {
       // 2. Update rankings
       for (const cat of categories) {
         for (const row of cat.rows) {
-          if (!row.passed) continue
           const scoreVal = parseFloat(row.score)
 
           if (cat.isFoundation) {
-            // ── FOUNDATION: branch on actual sport_id ──
+            // ── FOUNDATION ──
             const { data: existing } = await supabase
               .from('foundation_ranking')
-              .select('id, entry_participations, entry_title, entry_points, basic_participations, basic_title, basic_points')
+              .select('id, entry_participations, entry_title, entry_points, entry_top2_points, basic_participations, basic_title, basic_points, basic_top2_points, entry_locked, basic_locked')
               .eq('dog_id', row.dogId)
               .maybeSingle()
 
             if (cat.isEntry) {
               // Entry Level run
               if (!existing) {
+                // First ever run for this dog
                 await supabase.from('foundation_ranking').insert({
                   dog_id: row.dogId,
                   owner_id: row.ownerId,
-                  entry_participations: 1,
-                  entry_points: scoreVal,
+                  entry_participations: row.passed ? 1 : 0,
+                  entry_points: row.passed ? scoreVal : 0,
+                  entry_top2_points: row.passed ? scoreVal : 0,
                   entry_title: false,
+                  entry_locked: false,
                   basic_participations: 0,
                   basic_points: 0,
+                  basic_top2_points: 0,
                   basic_title: false,
+                  basic_locked: false,
                 })
-              } else if (!existing.entry_title) {
-                const newCount = existing.entry_participations + 1
-                const newPoints = existing.entry_points + scoreVal
-                const getsTitle = newCount >= 2
-                await supabase
-                  .from('foundation_ranking')
-                  .update({
-                    entry_participations: getsTitle ? 0 : newCount,
-                    entry_points: newPoints, // points never reset
-                    entry_title: getsTitle,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', existing.id)
+              } else {
+                // Update existing — always process (no lock on entry from above)
+                const updates: Record<string, any> = { updated_at: new Date().toISOString() }
+
+                if (row.passed) {
+                  const newCount = existing.entry_participations + 1
+                  const newPoints = existing.entry_points + scoreVal
+                  const getsTitle = !existing.entry_title && newCount >= 2
+
+                  // Recalculate top2: fetch all passed entry scores for this dog + this new one
+                  const { data: allEntryScores } = await supabase
+                    .from('competition_results')
+                    .select('score, event_categories!inner(sport_id)')
+                    .eq('dog_id', row.dogId)
+                    .eq('passed', true)
+                    .eq('status', 'approved')
+                    .eq('event_categories.sport_id', ENTRY_SPORT_ID)
+
+                  const allScores = [...(allEntryScores || []).map((s: any) => s.score), scoreVal]
+                    .sort((a, b) => b - a)
+                  const top2 = allScores.slice(0, 2).reduce((s, v) => s + v, 0)
+
+                  updates.entry_participations = getsTitle ? 0 : newCount
+                  updates.entry_points = newPoints
+                  updates.entry_top2_points = top2
+                  updates.entry_title = getsTitle || existing.entry_title
+                }
+
+                await supabase.from('foundation_ranking').update(updates).eq('id', existing.id)
               }
-              // If entry_title already true: dog should have been blocked from registering
             } else {
-              // Basic Level run
+              // Basic Level run — lock entry, process run
               if (!existing) {
                 await supabase.from('foundation_ranking').insert({
                   dog_id: row.dogId,
                   owner_id: row.ownerId,
                   entry_participations: 0,
                   entry_points: 0,
+                  entry_top2_points: 0,
                   entry_title: false,
-                  basic_participations: 1,
-                  basic_points: scoreVal,
+                  entry_locked: true, // attempted basic → entry locked
+                  basic_participations: row.passed ? 1 : 0,
+                  basic_points: row.passed ? scoreVal : 0,
+                  basic_top2_points: row.passed ? scoreVal : 0,
                   basic_title: false,
+                  basic_locked: false,
                 })
-              } else if (!existing.basic_title) {
-                const newCount = existing.basic_participations + 1
-                const newPoints = existing.basic_points + scoreVal
-                const getsTitle = newCount >= 2
-                await supabase
-                  .from('foundation_ranking')
-                  .update({
-                    basic_participations: getsTitle ? 0 : newCount,
-                    basic_points: newPoints, // points never reset
-                    basic_title: getsTitle,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', existing.id)
+              } else {
+                const updates: Record<string, any> = {
+                  entry_locked: true, // lock entry regardless of pass/fail
+                  updated_at: new Date().toISOString(),
+                }
+
+                if (row.passed) {
+                  const newCount = existing.basic_participations + 1
+                  const newPoints = existing.basic_points + scoreVal
+                  const getsTitle = !existing.basic_title && newCount >= 2
+
+                  // Recalculate top2 for basic
+                  const { data: allBasicScores } = await supabase
+                    .from('competition_results')
+                    .select('score, event_categories!inner(sport_id)')
+                    .eq('dog_id', row.dogId)
+                    .eq('passed', true)
+                    .eq('status', 'approved')
+                    .eq('event_categories.sport_id', BASIC_SPORT_ID)
+
+                  const allScores = [...(allBasicScores || []).map((s: any) => s.score), scoreVal]
+                    .sort((a, b) => b - a)
+                  const top2 = allScores.slice(0, 2).reduce((s, v) => s + v, 0)
+
+                  updates.basic_participations = getsTitle ? 0 : newCount
+                  updates.basic_points = newPoints
+                  updates.basic_top2_points = top2
+                  updates.basic_title = getsTitle || existing.basic_title
+                }
+
+                await supabase.from('foundation_ranking').update(updates).eq('id', existing.id)
               }
-              // If basic_title already true: dog should have been blocked from registering
             }
           } else {
-            // ── DISCIPLINE: update dog_sport_ranking ──
+            // ── DISCIPLINE — lock basic, process run ──
+
+            // Lock basic in foundation_ranking (any discipline attempt locks basic)
+            const { data: foundRank } = await supabase
+              .from('foundation_ranking')
+              .select('id, basic_locked')
+              .eq('dog_id', row.dogId)
+              .maybeSingle()
+
+            if (foundRank && !foundRank.basic_locked) {
+              await supabase
+                .from('foundation_ranking')
+                .update({ basic_locked: true, updated_at: new Date().toISOString() })
+                .eq('id', foundRank.id)
+            }
+
+            if (!row.passed) continue // discipline: only update ranking on pass
+
             const { data: sportRank } = await supabase
               .from('dog_sport_ranking')
               .select('id, participations, current_sublevel, title, total_points')
@@ -384,12 +438,14 @@ for (const cat of categories) {
       await supabase.from('events').update({ status: 'results_approved' }).eq('id', id)
 
       setAlreadyApproved(true)
-      setApproveMsg({ type: 'success', text: t('Όλα τα αποτελέσματα εγκρίθηκαν και οι κατατάξεις ενημερώθηκαν!', 'All results approved and rankings updated!') })
+      setApproveMsg({ type: 'success', text: t(
+        'Όλα τα αποτελέσματα εγκρίθηκαν και οι κατατάξεις ενημερώθηκαν!',
+        'All results approved and rankings updated!'
+      )})
     } catch (err) {
       console.error(err)
       setApproveMsg({ type: 'error', text: t('Σφάλμα κατά την έγκριση', 'Error during approval') })
     }
-
     setApproving(false)
   }
 
@@ -411,7 +467,6 @@ for (const cat of categories) {
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       <div style={{ maxWidth: '650px', margin: '0 auto', padding: '0 1.5rem' }}>
         <button onClick={() => router.push(`/events/${id}`)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem', marginBottom: '1.5rem', padding: 0 }}>←</button>
-
         <h1 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '2rem', letterSpacing: '0.05em', color: 'var(--text-primary)', margin: '0 0 0.25rem' }}>
           ✅ {t('Έγκριση Αποτελεσμάτων', 'Approve Results')}
         </h1>
@@ -459,7 +514,6 @@ for (const cat of categories) {
                 {cat.isFoundation && <span style={{ color: '#a0a0ff', marginLeft: '0.35rem' }}>· {cat.isEntry ? 'Entry' : 'Basic'}</span>}
               </span>
             </p>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {cat.rows.map((row, rowIndex) => (
                 <div key={row.id} style={{ background: 'var(--bg)', border: `1px solid ${row.willGetTitle ? 'rgba(212,175,55,0.4)' : row.passed === true ? '#7ef7a033' : row.passed === false ? '#f77e7e33' : 'var(--border)'}`, borderRadius: '10px', padding: '0.85rem 1rem' }}>
@@ -467,8 +521,7 @@ for (const cat of categories) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.35rem' }}>
                       <div>
                         <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                          🐕 {row.dogName}
-                          <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.75rem' }}> · {row.dogDisplayId}</span>
+                          🐕 {row.dogName} <span style={{ color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.75rem' }}> · {row.dogDisplayId}</span>
                         </p>
                         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                           👤 {row.ownerName} (#{row.ownerMemberId})
@@ -484,8 +537,8 @@ for (const cat of categories) {
                     <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                       {cat.isFoundation ? (
                         cat.isEntry
-                          ? `Entry: ${row.entryParticipations}/2 runs · ${row.entryPoints} pts${row.entryTitle ? ' · 🏅 Title earned' : ''}`
-                          : `Basic: ${row.basicParticipations}/2 runs · ${row.basicPoints} pts${row.basicTitle ? ' · 🏅 Title earned' : ''}`
+                          ? `Entry: ${row.entryParticipations} ${t('αγώνες', 'runs')} · Top-2: ${row.entryPoints} pts${row.entryTitle ? ' · 🏅 ' + t('Τίτλος', 'Title') : ''}`
+                          : `Basic: ${row.basicParticipations} ${t('αγώνες', 'runs')} · Top-2: ${row.basicPoints} pts${row.basicTitle ? ' · 🏅 ' + t('Τίτλος', 'Title') : ''}`
                       ) : (
                         <span style={{ color: '#7eb8f7' }}>
                           {t('Αγώνισμα πειθαρχίας', 'Discipline')} · {t('Συνολικοί πόντοι', 'Total points')}: {row.entryPoints}
@@ -493,7 +546,6 @@ for (const cat of categories) {
                       )}
                     </p>
                   </div>
-
                   <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '110px' }}>
                       <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>
@@ -542,7 +594,11 @@ for (const cat of categories) {
         )}
 
         {categories.length > 0 && !alreadyApproved && (
-          <button onClick={handleApproveAll} disabled={approving} style={{ width: '100%', background: approving ? 'var(--bg-card)' : 'var(--accent)', border: 'none', borderRadius: '12px', padding: '1rem', color: approving ? 'var(--text-secondary)' : 'var(--bg)', fontWeight: 700, cursor: approving ? 'not-allowed' : 'pointer', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.2rem', letterSpacing: '0.05em', opacity: approving ? 0.7 : 1 }}>
+          <button
+            onClick={handleApproveAll}
+            disabled={approving}
+            style={{ width: '100%', background: approving ? 'var(--bg-card)' : 'var(--accent)', border: 'none', borderRadius: '12px', padding: '1rem', color: approving ? 'var(--text-secondary)' : 'var(--bg)', fontWeight: 700, cursor: approving ? 'not-allowed' : 'pointer', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.2rem', letterSpacing: '0.05em', opacity: approving ? 0.7 : 1 }}
+          >
             {approving ? t('Επεξεργασία...', 'Processing...') : t('✅ Έγκριση Όλων των Αποτελεσμάτων', '✅ Approve All Results')}
           </button>
         )}

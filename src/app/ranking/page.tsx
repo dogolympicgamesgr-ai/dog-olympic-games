@@ -1,4 +1,5 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
@@ -22,7 +23,6 @@ export default function RankingPage() {
   const [mainTab, setMainTab] = useState<MainTab>('foundation')
   const [foundationTab, setFoundationTab] = useState<FoundationTab>('entry')
   const [disciplineSport, setDisciplineSport] = useState(DISCIPLINE_SPORTS[0].id)
-
   const [foundationData, setFoundationData] = useState<any[]>([])
   const [disciplineData, setDisciplineData] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
@@ -31,14 +31,15 @@ export default function RankingPage() {
 
   async function loadAll() {
     setLoading(true)
-
     const [foundationRes, disciplineRes] = await Promise.all([
       supabase
         .from('foundation_ranking')
         .select(`
-          dog_id, entry_participations, entry_title, entry_points,
-         dogs!ranking_dog_id_fkey(id, name, dog_id, photo_url, breeds(name)),
-         profiles!ranking_owner_id_fkey(id, full_name, member_id, avatar_url)
+          dog_id,
+          entry_participations, entry_title, entry_points, entry_top2_points,
+          basic_participations, basic_title, basic_points, basic_top2_points,
+          dogs!ranking_dog_id_fkey(id, name, dog_id, photo_url, breeds(name)),
+          profiles!ranking_owner_id_fkey(id, full_name, member_id, avatar_url)
         `)
         .or('entry_participations.gt.0,entry_title.eq.true,basic_participations.gt.0,basic_title.eq.true'),
       supabase
@@ -53,13 +54,11 @@ export default function RankingPage() {
 
     setFoundationData(foundationRes.data || [])
 
-    // Group discipline by sport_id
     const grouped: Record<string, any[]> = {}
     for (const sport of DISCIPLINE_SPORTS) grouped[sport.id] = []
     for (const row of (disciplineRes.data || [])) {
       if (grouped[row.sport_id]) grouped[row.sport_id].push(row)
     }
-    // Sort each sport: sublevel desc, then points desc
     for (const sportId of Object.keys(grouped)) {
       grouped[sportId].sort((a, b) =>
         b.current_sublevel !== a.current_sublevel
@@ -71,18 +70,19 @@ export default function RankingPage() {
     setLoading(false)
   }
 
+  // Sort by title first, then by top-2 score descending
   const entryRanking = [...foundationData]
     .filter(r => r.entry_participations > 0 || r.entry_title)
     .sort((a, b) => {
       if (a.entry_title !== b.entry_title) return a.entry_title ? -1 : 1
-      return b.entry_points - a.entry_points
+      return b.entry_top2_points - a.entry_top2_points
     })
 
   const basicRanking = [...foundationData]
     .filter(r => r.basic_participations > 0 || r.basic_title)
     .sort((a, b) => {
       if (a.basic_title !== b.basic_title) return a.basic_title ? -1 : 1
-      return b.basic_points - a.basic_points
+      return b.basic_top2_points - a.basic_top2_points
     })
 
   const currentDiscipline = DISCIPLINE_SPORTS.find(s => s.id === disciplineSport)!
@@ -105,7 +105,6 @@ export default function RankingPage() {
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
-      {/* Rank number */}
       <div style={{ width: '32px', textAlign: 'center', flexShrink: 0 }}>
         {rank <= 3 ? (
           <span style={{ fontSize: '1.2rem' }}>{rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉'}</span>
@@ -113,13 +112,9 @@ export default function RankingPage() {
           <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: 'var(--text-secondary)' }}>{rank}</span>
         )}
       </div>
-
-      {/* Avatar */}
       <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-card)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
-       {dog?.photo_url ? <img src={dog.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🐕'}
+        {dog?.photo_url ? <img src={dog.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '🐕'}
       </div>
-
-      {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {dog?.name}
@@ -132,8 +127,6 @@ export default function RankingPage() {
         </p>
         {sub}
       </div>
-
-      {/* Badge */}
       <div style={{ flexShrink: 0, textAlign: 'right' }}>{badge}</div>
     </div>
   )
@@ -149,7 +142,6 @@ export default function RankingPage() {
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '0 1.5rem' }}>
-
         <h1 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '2.5rem', letterSpacing: '0.05em', color: 'var(--text-primary)', margin: '0 0 0.25rem' }}>
           📊 {t('Κατάταξη', 'Ranking')}
         </h1>
@@ -170,7 +162,6 @@ export default function RankingPage() {
               {tabBtn(foundationTab === 'entry', () => setFoundationTab('entry'), `⭐ ${t('Εισαγωγικό', 'Entry Level')}`)}
               {tabBtn(foundationTab === 'basic', () => setFoundationTab('basic'), `⭐⭐ ${t('Βασικό', 'Basic Level')}`)}
             </div>
-
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
               {(foundationTab === 'entry' ? entryRanking : basicRanking).length === 0 ? (
                 <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '3rem', fontSize: '0.88rem', margin: 0 }}>
@@ -181,7 +172,7 @@ export default function RankingPage() {
                   const isEntry = foundationTab === 'entry'
                   const hasTitle = isEntry ? r.entry_title : r.basic_title
                   const participations = isEntry ? r.entry_participations : r.basic_participations
-                  const points = isEntry ? r.entry_points : r.basic_points
+                  const top2pts = isEntry ? r.entry_top2_points : r.basic_top2_points
 
                   const badge = (
                     <div>
@@ -195,14 +186,14 @@ export default function RankingPage() {
                         </span>
                       )}
                       <span style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: 'var(--accent)', display: 'block', textAlign: 'right' }}>
-                        {points} pts
+                        {top2pts} pts
                       </span>
                     </div>
                   )
 
                   const sub = hasTitle ? null : (
                     <div style={{ marginTop: '0.2rem', height: '4px', background: 'var(--border)', borderRadius: '2px', maxWidth: '80px' }}>
-                      <div style={{ width: `${(participations / 2) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: '2px', transition: 'width 0.3s' }} />
+                      <div style={{ width: `${Math.min((participations / 2) * 100, 100)}%`, height: '100%', background: 'var(--accent)', borderRadius: '2px', transition: 'width 0.3s' }} />
                     </div>
                   )
 
@@ -216,7 +207,6 @@ export default function RankingPage() {
         {/* ── DISCIPLINES ── */}
         {mainTab === 'discipline' && (
           <>
-            {/* Sport selector */}
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
               {DISCIPLINE_SPORTS.map(sport => tabBtn(
                 disciplineSport === sport.id,
@@ -224,16 +214,13 @@ export default function RankingPage() {
                 `${sport.icon} ${t(sport.name_el, sport.name_en)}`
               ))}
             </div>
-
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-              {/* Header */}
               <div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ fontSize: '1.1rem' }}>{currentDiscipline.icon}</span>
                 <p style={{ margin: 0, fontFamily: 'Bebas Neue, sans-serif', fontSize: '0.95rem', color: 'var(--accent)', letterSpacing: '0.04em' }}>
                   {t(currentDiscipline.name_el, currentDiscipline.name_en)}
                 </p>
               </div>
-
               {currentDisciplineRanking.length === 0 ? (
                 <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '3rem', fontSize: '0.88rem', margin: 0 }}>
                   {t('Δεν υπάρχουν εγγραφές ακόμα', 'No entries yet')}
@@ -250,13 +237,11 @@ export default function RankingPage() {
                       </span>
                     </div>
                   )
-
                   const sub = !r.title ? (
                     <p style={{ margin: '0.2rem 0 0', fontSize: '0.68rem', color: '#7eb8f7' }}>
                       {t('Επίπεδο', 'Level')} {r.current_sublevel} · {r.participations}/2 {t('αγώνες', 'runs')}
                     </p>
                   ) : null
-
                   return rankRow(i + 1, r.dogs, r.profiles, badge, sub)
                 })
               )}

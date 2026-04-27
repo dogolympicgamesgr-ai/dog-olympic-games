@@ -163,7 +163,7 @@ export default function Home() {
         color: 'var(--text-secondary)',
         fontSize: '0.85rem',
       }}>
-        © 2026 Dog Olympic Games. All rights reserved.
+        © 2026 CanAthlon. All rights reserved.
       </footer>
     </div>
   )

@@ -1,4 +1,5 @@
 'use client'
+
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
@@ -11,6 +12,7 @@ export default function EventsPage() {
   const { t } = useLang()
   const router = useRouter()
   const supabase = createClient()
+
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -37,11 +39,14 @@ export default function EventsPage() {
       .from('events')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'approved')
+      .gte('event_date', new Date().toISOString())
+
     const { count: upcoming } = await supabase
       .from('events')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'approved')
       .gte('event_date', new Date().toISOString())
+
     setTotalEvents(total || 0)
     setUpcomingCount(upcoming || 0)
   }
@@ -53,14 +58,16 @@ export default function EventsPage() {
       .select(`
         id, title_el, title_en, description_el, description_en,
         location, address, event_date, banner_url, contact_name,
-        registration_deadline, max_participants, status, created_by,
-        lat, lng,
+        registration_deadline, max_participants, status, created_by, lat, lng,
         event_categories(id, title_el, title_en, sport_id, is_championship)
       `)
       .eq('status', 'approved')
+      .gte('event_date', new Date().toISOString())
       .order('event_date', { ascending: true })
       .limit(50)
+
     if (query.trim()) q = q.ilike('title_el', `%${query}%`)
+
     const { data } = await q
     setEvents(data || [])
     setLoading(false)
@@ -72,22 +79,23 @@ export default function EventsPage() {
   const formatDate = (iso: string) => {
     if (!iso) return ''
     return new Date(iso).toLocaleDateString(t('el-GR', 'en-GB'), {
-      day: 'numeric', month: 'long', year: 'numeric',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
     })
   }
-
-  const isUpcoming = (iso: string) => iso && new Date(iso) > new Date()
 
   const eventsWithCoords = events.filter(e => e.lat && e.lng)
   const currentLang = t('el', 'en') as 'el' | 'en'
 
-  if (loading) return (
-    <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: 'var(--accent)', fontFamily: 'Bebas Neue, sans-serif', fontSize: '2rem' }}>
-        {t('Φόρτωση...', 'Loading...')}
-      </p>
-    </div>
-  )
+  if (loading)
+    return (
+      <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: 'var(--accent)', fontFamily: 'Bebas Neue, sans-serif', fontSize: '2rem' }}>
+          {t('Φόρτωση...', 'Loading...')}
+        </p>
+      </div>
+    )
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
@@ -116,7 +124,7 @@ export default function EventsPage() {
         {/* Stats */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
           {[
-            { label: t('Συνολικοί Αγώνες', 'Total Events'), value: totalEvents, icon: '🏆' },
+            { label: t('Εγκεκριμένοι Αγώνες', 'Approved Events'), value: totalEvents, icon: '🏆' },
             { label: t('Επερχόμενοι', 'Upcoming'), value: upcomingCount, icon: '📅' },
           ].map(stat => (
             <div key={stat.label} style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem', textAlign: 'center' }}>
@@ -127,29 +135,35 @@ export default function EventsPage() {
           ))}
         </div>
 
-        {/* Search + Map toggle */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          <input
-            style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.65rem 0.85rem', color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'Outfit, sans-serif', outline: 'none' }}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && loadEvents(searchQuery)}
-            placeholder={t('Αναζήτηση αγώνα...', 'Search events...')}
-          />
-          <button
-            onClick={() => loadEvents(searchQuery)}
-            disabled={searching}
-            style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.65rem 1.25rem', color: 'var(--bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
-          >
-            {searching ? '...' : t('Αναζήτηση', 'Search')}
-          </button>
-          {eventsWithCoords.length > 0 && (
+        {/* Search row */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input
+              style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.65rem 0.85rem', color: 'var(--text-primary)', fontSize: '0.9rem', fontFamily: 'Outfit, sans-serif', outline: 'none' }}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && loadEvents(searchQuery)}
+              placeholder={t('Αναζήτηση αγώνα...', 'Search events...')}
+            />
             <button
-              onClick={() => setShowMap(v => !v)}
-              style={{ background: showMap ? 'var(--accent)' : 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.65rem 1rem', color: showMap ? 'var(--bg)' : 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontWeight: 600, whiteSpace: 'nowrap', fontSize: '0.9rem' }}
+              onClick={() => loadEvents(searchQuery)}
+              disabled={searching}
+              style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.65rem 1.25rem', color: 'var(--bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
             >
-              🗺️ {t('Χάρτης', 'Map')}
+              {searching ? '...' : t('Αναζήτηση', 'Search')}
             </button>
+          </div>
+
+          {/* Map toggle — separate row, right-aligned */}
+          {eventsWithCoords.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button
+                onClick={() => setShowMap(v => !v)}
+                style={{ background: showMap ? 'var(--accent)' : 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 1rem', color: showMap ? 'var(--bg)' : 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: '0.85rem' }}
+              >
+                🗺️ {t('Χάρτης', 'Map')}
+              </button>
+            </div>
           )}
         </div>
 
@@ -169,12 +183,11 @@ export default function EventsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {events.length === 0 && (
             <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '3rem 0' }}>
-              {t('Δεν βρέθηκαν αγώνες', 'No events found')}
+              {t('Δεν βρέθηκαν επερχόμενοι αγώνες', 'No upcoming events found')}
             </p>
           )}
           {events.map((event: any) => {
             const title = t(event.title_el, event.title_en || event.title_el)
-            const upcoming = isUpcoming(event.event_date)
             const categories = event.event_categories || []
             return (
               <div
@@ -190,14 +203,9 @@ export default function EventsPage() {
                   </div>
                 )}
                 <div style={{ padding: '1rem 1.25rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <p style={{ margin: 0, fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.04em', color: 'var(--text-primary)' }}>
-                      {title}
-                    </p>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '99px', background: upcoming ? 'rgba(var(--accent-rgb, 212,175,55), 0.15)' : 'var(--bg)', color: upcoming ? 'var(--accent)' : 'var(--text-secondary)', border: `1px solid ${upcoming ? 'var(--accent)' : 'var(--border)'}`, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {upcoming ? t('Επερχόμενος', 'Upcoming') : t('Ολοκληρώθηκε', 'Past')}
-                    </span>
-                  </div>
+                  <p style={{ margin: '0 0 0.5rem', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', letterSpacing: '0.04em', color: 'var(--text-primary)' }}>
+                    {title}
+                  </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginBottom: '0.75rem' }}>
                     {event.event_date && (
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>📅 {formatDate(event.event_date)}</span>

@@ -4,13 +4,13 @@ import Navbar from '@/components/Navbar'
 import { LanguageProvider } from '@/context/LanguageContext'
 
 export const metadata: Metadata = {
-  title: 'Dog Olympic Games',
-  description: 'The official platform for Dog Olympic Games — competitions, rankings, teams and events.',
+  title: 'CanAthlon',
+  description: 'The official platform for CanAthlon — competitions, rankings, teams and events.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Dog Olympic Games',
+    title: 'CanAthlon',
 
     
   },

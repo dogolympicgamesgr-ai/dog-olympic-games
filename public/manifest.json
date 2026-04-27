@@ -1,7 +1,7 @@
 {
-  "name": "Dog Olympic Games",
+  "name": "CanAthlon",
   "short_name": "DOG Olympics",
-  "description": "The official platform for Dog Olympic Games",
+  "description": "The official platform for CanAthlon",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0f1e",
