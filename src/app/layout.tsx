@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import Navbar from '@/components/Navbar'
 import { LanguageProvider } from '@/context/LanguageContext'
+import PushProvider from '@/components/PushProvider'
 
 export const metadata: Metadata = {
   title: 'CanAthlon',
@@ -11,8 +12,6 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'CanAthlon',
-
-    
   },
 }
 
@@ -31,10 +30,12 @@ export default function RootLayout({
     <html lang="el">
       <body>
         <LanguageProvider>
-          <Navbar />
-          <main style={{ paddingTop: 'var(--nav-height)' }}>
-            {children}
-          </main>
+          <PushProvider>
+            <Navbar />
+            <main style={{ paddingTop: 'var(--nav-height)' }}>
+              {children}
+            </main>
+          </PushProvider>
         </LanguageProvider>
       </body>
     </html>
