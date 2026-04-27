@@ -1,5 +1,7 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import webpush from 'npm:web-push'
+//import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+//import webpush from 'npm:web-push'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+import webpush from 'npm:web-push@3.6.7'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')!
