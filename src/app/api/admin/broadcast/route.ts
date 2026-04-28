@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerSupabaseClient } from '@/lib/supabaseserver'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { broadcastTemplate, newEventTemplate, newSeminarTemplate } from '@/lib/emailTemplates'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY!
