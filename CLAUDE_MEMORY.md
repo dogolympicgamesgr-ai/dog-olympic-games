@@ -116,6 +116,39 @@
 ### `dog_sport_ranking`
 - `dog_id`, `sport_id`, `current_sublevel`, `participations`, `title`, `total_points`
 
+### `competition_results`
+| column | type | notes |
+|---|---|---|
+| id | uuid | PK |
+| event_id | uuid | FK events |
+| dog_id | uuid | FK dogs |
+| owner_id | uuid | FK profiles |
+| category_id | uuid | FK event_categories |
+| score | numeric | |
+| placement | integer | |
+| passed | boolean | |
+| level_at_time | text | |
+| submitted_by | uuid | FK profiles |
+| approved_by | uuid | FK profiles |
+| status | result_status | enum: pending, approved |
+| created_at | timestamptz | |
+
+### `seminar_registrations`
+| column | type | notes |
+|---|---|---|
+| id | uuid | PK |
+| seminar_id | uuid | FK seminars |
+| user_id | uuid | FK profiles |
+| status | text | default 'confirmed' |
+| attendance_status | text | attended / no_show |
+| created_at | timestamptz | |
+
+## Component Conventions
+- Pagination: Mobile 7 (lists) / 3 (widgets), Desktop 20. Load More adds same amount.
+- `t('el','en') === 'el'` for language detection when arrays needed (not passing arrays to `t()`)
+- `EventCalendar`: `src/components/EventCalendar.tsx` — shared, used by events + seminars listing
+- Events/Seminars listing: two-query architecture (lightweight dots query + paginated full records)
+
 ### `team_members` RLS
 - INSERT: allows self OR captain (team's `created_by`)
 - UPDATE: allows captain OR invited user

@@ -205,22 +205,35 @@ export default function ResultsPage() {
     setApproving(true)
     setApproveMsg(null)
 
-    // Check every event category has at least one result submitted
-    const { data: allEventCats } = await supabase
-      .from('event_categories')
-      .select('id, title_el, title_en')
-      .eq('event_id', id)
+   const { data: allEventCats } = await supabase
+  .from('event_categories')
+  .select('id, title_el, title_en')
+  .eq('event_id', id)
 
-    const submittedCatIds = new Set(categories.map(c => c.categoryId))
-    const missingCat = (allEventCats || []).find((c: any) => !submittedCatIds.has(c.id))
-    if (missingCat) {
-      setApproveMsg({ type: 'error', text: t(
-        `Η κατηγορία "${missingCat.title_el}" δεν έχει αποτελέσματα. Όλες οι κατηγορίες πρέπει να έχουν βαθμολογηθεί πριν την έγκριση.`,
-        `Category "${missingCat.title_el}" has no results. All categories must be scored before approval.`
-      )})
-      setApproving(false)
-      return
-    }
+// Find categories that actually had attended participants
+const { data: attendedRegs } = await supabase
+  .from('event_registrations')
+  .select('category_id')
+  .eq('event_id', id)
+  .eq('attendance_status', 'attended')
+  .eq('status', 'confirmed')
+
+const catsWithAttendees = new Set((attendedRegs || []).map((r: any) => r.category_id))
+const submittedCatIds = new Set(categories.map(c => c.categoryId))
+
+// Only require results for categories that had at least one attendee
+const missingCat = (allEventCats || []).find(
+  (c: any) => catsWithAttendees.has(c.id) && !submittedCatIds.has(c.id)
+)
+
+if (missingCat) {
+  setApproveMsg({ type: 'error', text: t(
+    `Η κατηγορία "${missingCat.title_el}" δεν έχει αποτελέσματα. Όλες οι κατηγορίες με παρόντες πρέπει να έχουν βαθμολογηθεί πριν την έγκριση.`,
+    `Category "${missingCat.title_el}" has no results. All categories with attendees must be scored before approval.`
+  )})
+  setApproving(false)
+  return
+}
 
     // Check all rows are complete
     for (const cat of categories) {
@@ -593,7 +606,7 @@ export default function ResultsPage() {
           </div>
         )}
 
-        {categories.length > 0 && !alreadyApproved && (
+        {!alreadyApproved && (
           <button
             onClick={handleApproveAll}
             disabled={approving}
