@@ -205,5 +205,4 @@ Sections: Users, Roles, Events, Seminars, Results, Teams, Dogs, Absences, Commun
 ## Pending Fixes (move to Claude dynamic memory when working on these)
 
 - **(D)** Notification action links — `action_url` column exists, UI never uses it
-- **(F)** Post-close admin navigation to results page
 - **Dog profile:** Title circles should show Entry + Basic independently; headline discipline = highest sublevel not most points
