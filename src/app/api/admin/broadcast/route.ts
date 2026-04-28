@@ -67,9 +67,9 @@ export async function POST(req: NextRequest) {
     // All active users
     const { data } = await supabase
       .from('profiles')
-      .select('user_id')
+      .select('id')
       .eq('status', 'active')
-    userIds = (data || []).map((r: any) => r.user_id)
+    userIds = (data || []).map((r: any) => r.id)
   } else {
     // Users with a specific role
     const { data } = await supabase
@@ -81,10 +81,10 @@ export async function POST(req: NextRequest) {
     // Filter to active profiles only
     const { data: profiles } = await supabase
       .from('profiles')
-      .select('user_id')
+      .select('id')
       .eq('status', 'active')
-      .in('user_id', roleUserIds)
-    userIds = (profiles || []).map((r: any) => r.user_id)
+      .in('id', roleUserIds)
+    userIds = (profiles || []).map((r: any) => r.id)
   }
 
   if (userIds.length === 0) {
@@ -118,8 +118,8 @@ export async function POST(req: NextRequest) {
     // Fetch display_email for users who have opted in
     const { data: emailProfiles } = await supabase
       .from('profiles')
-      .select('user_id, display_email, email_notifications')
-      .in('user_id', userIds)
+      .select('id, display_email, email_notifications')
+      .in('id', userIds)
       .eq('email_notifications', true)
       .not('display_email', 'is', null)
 
