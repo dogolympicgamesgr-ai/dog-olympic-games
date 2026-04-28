@@ -10,22 +10,21 @@ import AdminSeminars from '@/components/admin/AdminSeminars'
 import AdminResults from '@/components/admin/AdminResults'
 import AdminTeams from '@/components/admin/AdminTeams'
 import AdminDogs from '@/components/admin/AdminDogs'
-// NEW: Import AdminAbsences
 import AdminAbsences from '@/components/admin/AdminAbsences'
+import AdminCommunications from '@/components/admin/AdminCommunications'
 
-// UPDATED: Add 'absences' to Section type
-type Section = 'users' | 'roles' | 'events' | 'seminars' | 'results' | 'teams' | 'dogs' | 'absences'
+type Section = 'users' | 'roles' | 'events' | 'seminars' | 'results' | 'teams' | 'dogs' | 'absences' | 'communications'
 
-// UPDATED: Add absences to sections array
 const sections: { id: Section; icon: string; label: string }[] = [
-  { id: 'users',    icon: '👥', label: 'Users' },
-  { id: 'roles',    icon: '🎖️', label: 'Roles' },
-  { id: 'events',   icon: '🏆', label: 'Events' },
-  { id: 'seminars', icon: '📚', label: 'Seminars' },
-  { id: 'results',  icon: '📊', label: 'Results' },
-  { id: 'teams',    icon: '🛡️', label: 'Teams' },
-  { id: 'dogs',     icon: '🐕', label: 'Dogs' },
-  { id: 'absences', icon: '⚠️', label: 'Absences' },
+  { id: 'users',          icon: '👥', label: 'Users' },
+  { id: 'roles',          icon: '🎖️', label: 'Roles' },
+  { id: 'events',         icon: '🏆', label: 'Events' },
+  { id: 'seminars',       icon: '📚', label: 'Seminars' },
+  { id: 'results',        icon: '📊', label: 'Results' },
+  { id: 'teams',          icon: '🛡️', label: 'Teams' },
+  { id: 'dogs',           icon: '🐕', label: 'Dogs' },
+  { id: 'absences',       icon: '⚠️', label: 'Absences' },
+  { id: 'communications', icon: '📢', label: 'Communications' },
 ]
 
 export default function AdminPage() {
@@ -35,31 +34,31 @@ export default function AdminPage() {
   const [active, setActive] = useState<Section>('users')
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
- useEffect(() => {
-  async function init() {
-    try {
-      const res = await fetch('/auth/session')
-      const { user } = await res.json()
-      if (!user) { router.push('/'); return }
-      const { data } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('role', 'admin')
-        .maybeSingle()
-      if (!data) { router.push('/dashboard'); return }
-      setChecking(false)
-    } catch (err) {
-      router.push('/')
+  useEffect(() => {
+    async function init() {
+      try {
+        const res = await fetch('/auth/session')
+        const { user } = await res.json()
+        if (!user) { router.push('/'); return }
+        const { data } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('role', 'admin')
+          .maybeSingle()
+        if (!data) { router.push('/dashboard'); return }
+        setChecking(false)
+      } catch (err) {
+        router.push('/')
+      }
     }
-  }
-  init()
+    init()
 
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-    if (event === 'SIGNED_OUT') router.push('/')
-  })
-  return () => subscription.unsubscribe()
-}, [])
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') router.push('/')
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   if (checking) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
@@ -67,17 +66,17 @@ export default function AdminPage() {
     </div>
   )
 
-  // UPDATED: Add 'absences' case
   const renderSection = () => {
     switch (active) {
-      case 'users':    return <AdminUsers />
-      case 'roles':    return <AdminRoles />
-      case 'events':   return <AdminEvents />
-      case 'seminars': return <AdminSeminars />
-      case 'results':  return <AdminResults />
-      case 'teams':    return <AdminTeams />
-      case 'dogs':     return <AdminDogs />
-      case 'absences': return <AdminAbsences />
+      case 'users':          return <AdminUsers />
+      case 'roles':          return <AdminRoles />
+      case 'events':         return <AdminEvents />
+      case 'seminars':       return <AdminSeminars />
+      case 'results':        return <AdminResults />
+      case 'teams':          return <AdminTeams />
+      case 'dogs':           return <AdminDogs />
+      case 'absences':       return <AdminAbsences />
+      case 'communications': return <AdminCommunications />
     }
   }
 

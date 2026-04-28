@@ -26,6 +26,10 @@ export default function AdminEvents() {
   const [pendingResultsCount, setPendingResultsCount] = useState(0)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [showMap, setShowMap] = useState(false)
+  const [notifying, setNotifying] = useState<string | null>(null)
+  const [notifyModal, setNotifyModal] = useState<{ event: any } | null>(null)
+  const [notifyChannels, setNotifyChannels] = useState<Set<string>>(new Set(['push']))
+  const [notifyResult, setNotifyResult] = useState<string | null>(null)
 
   useEffect(() => { loadEvents() }, [filter])
   useEffect(() => { loadCounts() }, [])
@@ -85,6 +89,61 @@ export default function AdminEvents() {
     await supabase.from('events').delete().eq('id', id)
     setDeleting(null)
     loadEvents()
+  }
+
+  function openNotifyModal(event: any) {
+    setNotifyChannels(new Set(['push']))
+    setNotifyResult(null)
+    setNotifyModal({ event })
+  }
+
+  function toggleNotifyChannel(ch: string) {
+    setNotifyChannels(prev => {
+      const next = new Set(prev)
+      next.has(ch) ? next.delete(ch) : next.add(ch)
+      return next
+    })
+  }
+
+  async function sendNotify() {
+    if (!notifyModal || notifyChannels.size === 0) return
+    const { event } = notifyModal
+    setNotifying(event.id)
+    setNotifyResult(null)
+
+    try {
+      const res = await fetch('/api/admin/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audience: 'all',
+          title_el: `Νέος Αγώνας: ${event.title_el}`,
+          title_en: `New Event: ${event.title_el}`,
+          message_el: `Ένας νέος αγώνας είναι διαθέσιμος: "${event.title_el}" στις ${new Date(event.event_date).toLocaleDateString('el-GR')} — ${event.location}`,
+          message_en: `A new event is available: "${event.title_el}" on ${new Date(event.event_date).toLocaleDateString('en-GB')} — ${event.location}`,
+          channels: Array.from(notifyChannels),
+          item_type: 'event',
+          item_id: event.id,
+          item_data: {
+            id: event.id,
+            title_el: event.title_el,
+            title_en: event.title_en,
+            location: event.location,
+            event_date: event.event_date,
+          },
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed')
+      const parts = []
+      if (data.push_sent > 0) parts.push(`${data.push_sent} push`)
+      if (data.email_sent > 0) parts.push(`${data.email_sent} email`)
+      setNotifyResult(`✅ Sent: ${parts.join(', ')}`)
+    } catch (e: any) {
+      setNotifyResult(`❌ ${e.message}`)
+    } finally {
+      setNotifying(null)
+    }
   }
 
   const eventsWithCoords = events.filter(e => e.lat && e.lng)
@@ -152,7 +211,6 @@ export default function AdminEvents() {
           </button>
         ))}
 
-        {/* Map toggle — only for results_approved tab when events have coords */}
         {filter === 'results_approved' && eventsWithCoords.length > 0 && (
           <button
             onClick={() => setShowMap(v => !v)}
@@ -201,9 +259,16 @@ export default function AdminEvents() {
                   <button onClick={() => updateStatus(event.id, 'approved')} style={{ background: '#7ef7a033', border: '1px solid #7ef7a0', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#7ef7a0', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>Approve</button>
                   <button onClick={() => updateStatus(event.id, 'cancelled')} style={{ background: '#f77e7e33', border: '1px solid #f77e7e', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>Reject</button>
                 </>}
-                {event.status === 'approved' && (
+                {event.status === 'approved' && <>
+                  {/* Notify button — only on approved events */}
+                  <button
+                    onClick={() => openNotifyModal(event)}
+                    style={{ background: '#7eb8f722', border: '1px solid #7eb8f744', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#7eb8f7', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif', fontWeight: 600 }}
+                  >
+                    📢 Notify
+                  </button>
                   <button onClick={() => updateStatus(event.id, 'cancelled')} style={{ background: '#f77e7e33', border: '1px solid #f77e7e', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>Cancel</button>
-                )}
+                </>}
                 {event.status === 'cancelled' && <>
                   <button onClick={() => updateStatus(event.id, 'approved')} style={{ background: '#7ef7a033', border: '1px solid #7ef7a0', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#7ef7a0', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif' }}>Restore</button>
                   <button onClick={() => deleteEvent(event.id)} disabled={deleting === event.id} style={{ background: '#f77e7e', border: 'none', borderRadius: '6px', padding: '0.4rem 0.75rem', color: '#0a0f1e', cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'Outfit, sans-serif', fontWeight: 700, opacity: deleting === event.id ? 0.6 : 1 }}>
@@ -221,6 +286,68 @@ export default function AdminEvents() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Notify Modal ──────────────────────────────────────────── */}
+      {notifyModal && (
+        <div
+          onClick={() => { setNotifyModal(null); setNotifyResult(null) }}
+          style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem', width: '100%', maxWidth: '420px' }}
+          >
+            <p style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', fontSize: '1rem' }}>
+              📢 Notify All Users
+            </p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
+              {notifyModal.event.title_el}
+            </p>
+
+            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.6rem' }}>
+              Send via
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem' }}>
+              {[
+                { id: 'push',  icon: '🔔', label: 'Push' },
+                { id: 'email', icon: '✉️', label: 'Email' },
+              ].map(ch => (
+                <label key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={notifyChannels.has(ch.id)}
+                    onChange={() => toggleNotifyChannel(ch.id)}
+                    style={{ accentColor: 'var(--accent)', width: '16px', height: '16px' }}
+                  />
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{ch.icon} {ch.label}</span>
+                </label>
+              ))}
+            </div>
+
+            {notifyResult && (
+              <p style={{ fontSize: '0.82rem', color: notifyResult.startsWith('✅') ? '#7ef7a0' : '#f77e7e', marginBottom: '1rem' }}>
+                {notifyResult}
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setNotifyModal(null); setNotifyResult(null) }}
+                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem 1rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem' }}
+              >
+                Close
+              </button>
+              <button
+                onClick={sendNotify}
+                disabled={notifyChannels.size === 0 || !!notifying}
+                style={{ background: notifyChannels.size > 0 && !notifying ? 'var(--accent)' : 'var(--border)', border: 'none', borderRadius: '6px', padding: '0.5rem 1.25rem', color: notifyChannels.size > 0 && !notifying ? 'var(--bg)' : 'var(--text-secondary)', cursor: notifyChannels.size > 0 && !notifying ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '0.85rem' }}
+              >
+                {notifying ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
