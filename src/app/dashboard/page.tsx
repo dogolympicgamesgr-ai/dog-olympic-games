@@ -11,6 +11,7 @@ import TeamBadge from '@/components/dashboard/TeamBadge'
 import DogCircles from '@/components/dashboard/DogCircles'
 import StatsCircles from '@/components/dashboard/StatsCircles'
 import EventsList from '@/components/dashboard/EventsList'
+import MyUpcomingRegistrations from '@/components/dashboard/MyUpcomingRegistrations'
 
 export default function DashboardPage() {
   const { t } = useLang()
@@ -183,6 +184,7 @@ export default function DashboardPage() {
       </div>
 
       <StatsCircles dogCount={dogs.length} eventCount={results.length} dogs={dogs} results={results} />
+      {profile && <MyUpcomingRegistrations userId={profile.id} />}
       <EventsList results={results} profile={profile} />
 
       <style>{`
