@@ -48,7 +48,7 @@ export default function MyUpcomingRegistrations({ userId }: Props) {
       .eq('owner_id', userId)
       .eq('status', 'confirmed')
       .gt('event_categories.events.event_date', now)
-      .neq('event_categories.events.status', 'cancelled')
+      .eq('event_categories.events.status', 'approved')
 
     // Fetch seminar registrations
     const { data: seminarRegs } = await supabase
@@ -62,7 +62,7 @@ export default function MyUpcomingRegistrations({ userId }: Props) {
       .eq('user_id', userId)
       .eq('status', 'confirmed')
       .gt('seminars.seminar_date', now)
-      .neq('seminars.status', 'cancelled')
+      .eq('seminars.status', 'approved')
 
     // Normalise to a common shape
     const eventItems = (eventRegs || [])
