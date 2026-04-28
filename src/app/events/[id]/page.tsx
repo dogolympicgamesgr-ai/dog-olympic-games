@@ -109,6 +109,12 @@ export default function EventDetailPage() {
       .in('category_id', catIds)
       .eq('status', 'confirmed')
     setAllRegistrations(data || [])
+    const { data: results } = await supabase
+  .from('competition_results')
+  .select('dog_id, category_id, score, passed, placement')
+  .eq('event_id', eventId)
+  .eq('status', 'approved')
+setApprovedResults(results || [])
   }
 
   async function loadAssignments(eventId: string, sessionRes: any) {
@@ -405,8 +411,8 @@ async function handleInvite() {
   const canManageAttendance = (isMyEvent || session?.isAdmin) && event.status === 'approved'
   const canManageAssignments = isOrganizerOrAdmin && !isLocked
   const myJudgeAssignments = assignments.filter(a => a.user_id === session?.user?.id && a.role === 'judge' && a.status === 'accepted')
-  const isAssignedJudge = myJudgeAssignments.length > 0 && isCompleted
-  const canReviewResults = session?.isAdmin && isCompleted
+  const isAssignedJudge = myJudgeAssignments.length > 0 && event.status === 'completed'
+  const canReviewResults = session?.isAdmin && event.status === 'completed'
   const decoyAssignments = assignments.filter(a => a.role === 'decoy')
   const judgeAssignments = assignments.filter(a => a.role === 'judge')
   const visibleDecoys = decoyAssignments.filter(a => a.status === 'accepted' || isOrganizerOrAdmin || a.user_id === session?.user?.id)
