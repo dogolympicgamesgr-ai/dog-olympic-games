@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 import type { User } from '@supabase/supabase-js'
 
-const router = useRouter()
+
 
 const aboutLinks = [
   { href: '/about',  el: 'Τι είναι το άθλημα', en: 'About the Sport' },
@@ -27,6 +27,7 @@ const communityLinks = [
 ]
 
 export default function Navbar() {
+  const router = useRouter()
   const { lang, setLang, t } = useLang()
   const [user, setUser] = useState<User | null>(null)
   const [profileName, setProfileName] = useState('')
