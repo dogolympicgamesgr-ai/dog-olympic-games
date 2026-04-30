@@ -14,7 +14,6 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
   const [team, setTeam] = useState<any>(null)
   const [captain, setCaptain] = useState<any>(null)
   const [members, setMembers] = useState<any[]>([])
-  const [totalPoints, setTotalPoints] = useState(0)
   const [loading, setLoading] = useState(true)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
@@ -30,70 +29,71 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
   async function load() {
     setLoading(true)
 
-    const result = await supabase
+    // 1. Team
+    const { data: teamData } = await supabase
       .from('teams').select('*').eq('id', teamId).single()
-
-    if (!result.data) { setLoading(false); return }
-    const teamData = result.data
+    if (!teamData) { setLoading(false); return }
     setTeam(teamData)
 
+    // 2. Captain profile
     const { data: captainData } = await supabase
       .from('profiles').select('id, full_name, avatar_url, member_id')
       .eq('id', teamData.created_by).single()
     setCaptain(captainData)
 
-    // Get accepted members
+    // 3. Accepted members with their profiles in one query
     const { data: memberRows } = await supabase
       .from('team_members')
       .select('id, user_id, profiles!team_members_user_id_fkey(id, full_name, avatar_url, member_id)')
       .eq('team_id', teamId)
       .eq('status', 'accepted')
 
-    // For each member: get dogs + ranking points
-    const enriched = await Promise.all((memberRows || []).map(async (m: any) => {
-      const { data: dogs } = await supabase
-        .from('dogs')
-        .select('id, name, photo_url, breed_id, breeds(name_el, name_en)')
-        .eq('owner_id', m.user_id)
-        .eq('status', 'active')
+    if (!memberRows || memberRows.length === 0) {
+      setMembers([])
+      setLoading(false)
+      return
+    }
 
-      // Points from dog_sport_ranking — keyed by dog_id not owner_id
-      const dogIds = (dogs || []).map((d: any) => d.id)
-      let ownerPoints = 0
-      if (dogIds.length > 0) {
-        const { data: rankRows } = await supabase
-          .from('dog_sport_ranking')
-          .select('total_points')
-          .in('dog_id', dogIds)
-        ownerPoints = (rankRows || []).reduce((sum: number, r: any) => sum + Number(r.total_points || 0), 0)
-      }
+    // 4. All dogs for all members in ONE query — no N+1
+    const userIds = memberRows.map((m: any) => m.user_id)
+    const { data: allDogs } = await supabase
+      .from('dogs')
+      .select('id, name, photo_url, owner_id, breed_id, breeds(name_el, name_en)')
+      .in('owner_id', userIds)
+      .eq('status', 'active')
 
-      return { ...m, dogs: dogs || [], ownerPoints }
+    // Map dogs to their owner
+    const dogsByOwner: Record<string, any[]> = {}
+    for (const dog of allDogs || []) {
+      if (!dogsByOwner[dog.owner_id]) dogsByOwner[dog.owner_id] = []
+      dogsByOwner[dog.owner_id].push(dog)
+    }
+
+    const enriched = memberRows.map((m: any) => ({
+      ...m,
+      dogs: dogsByOwner[m.user_id] || [],
     }))
 
     setMembers(enriched)
-    const pts = enriched.reduce((sum, m) => sum + m.ownerPoints, 0)
-    setTotalPoints(pts)
 
-    // Current user checks
+    // 5. Current user session checks
     const res = await fetch('/auth/session')
     const { user } = await res.json()
     if (user) {
       setCurrentUserId(user.id)
-      const { data: inThisTeam } = await supabase
-        .from('team_members').select('id')
-        .eq('user_id', user.id).eq('team_id', teamId).eq('status', 'accepted').maybeSingle()
-      setUserIsInThisTeam(!!inThisTeam)
 
-      const { data: inAnyTeam } = await supabase
-        .from('team_members').select('id')
-        .eq('user_id', user.id).eq('status', 'accepted').maybeSingle()
-      setUserInTeam(!!inAnyTeam)
+      const [inThisTeam, inAnyTeam, pending] = await Promise.all([
+        supabase.from('team_members').select('id')
+          .eq('user_id', user.id).eq('team_id', teamId).eq('status', 'accepted').maybeSingle(),
+        supabase.from('team_members').select('id')
+          .eq('user_id', user.id).eq('status', 'accepted').maybeSingle(),
+        supabase.from('team_members').select('id')
+          .eq('user_id', user.id).eq('team_id', teamId).eq('status', 'pending').maybeSingle(),
+      ])
 
-      const { data: pending } = await supabase
-        .from('team_members').select('id')
-        .eq('user_id', user.id).eq('team_id', teamId).eq('status', 'pending').maybeSingle()
-      setUserHasPending(!!pending)
+      setUserIsInThisTeam(!!inThisTeam.data)
+      setUserInTeam(!!inAnyTeam.data)
+      setUserHasPending(!!pending.data)
     }
 
     setLoading(false)
@@ -115,8 +115,10 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
         const { data: senderProfile } = await supabase
           .from('profiles').select('full_name').eq('id', currentUserId).single()
         await supabase.from('notifications').insert({
-          user_id: captain.id, type: 'team_join_request',
-          title_el: 'Νέο αίτημα εισόδου', title_en: 'New Join Request',
+          user_id: captain.id,
+          type: 'team_join_request',
+          title_el: 'Νέο αίτημα εισόδου',
+          title_en: 'New Join Request',
           message_el: `Ο/Η ${senderProfile?.full_name} ζητά να μπει στην ομάδα "${team?.name}".`,
           message_en: `${senderProfile?.full_name} wants to join "${team?.name}".`,
           metadata: { team_id: teamId, requester_id: currentUserId },
@@ -170,29 +172,33 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
                 style={{ width: 90, height: 90, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--accent)', marginBottom: '1rem', cursor: 'zoom-in' }} />
             : <div style={{ width: 90, height: 90, borderRadius: '50%', background: 'var(--bg)', border: '3px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', margin: '0 auto 1rem' }}>🛡️</div>
           }
+
           <h1 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '2.2rem', color: 'var(--accent)', letterSpacing: '0.05em', margin: '0 0 0.25rem' }}>
             {team.name}
           </h1>
+
           {team.description && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>{team.description}</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0 0 1rem' }}>
+              {team.description}
+            </p>
           )}
 
-          {/* Stats */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1rem' }}>
-            <div>
-              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.5rem', color: 'var(--text-primary)' }}>{members.length}</div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{t('Μέλη', 'Members')}</div>
+          {/* Member count only */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.5rem', color: 'var(--text-primary)' }}>
+              {members.length}
             </div>
-            <div>
-              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.5rem', color: 'var(--accent)' }}>{totalPoints}</div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{t('Σύνολο pts', 'Total pts')}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              {t('Μέλη', 'Members')}
             </div>
           </div>
 
           {/* Captain */}
           {captain && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg)', borderRadius: '99px', padding: '0.35rem 0.85rem', cursor: 'pointer' }}
-              onClick={() => router.push(`/profile/${captain.member_id}`)}>
+            <div
+              onClick={() => router.push(`/profile/${captain.member_id}`)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg)', borderRadius: '99px', padding: '0.35rem 0.85rem', cursor: 'pointer' }}
+            >
               {captain.avatar_url
                 ? <img src={captain.avatar_url} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
                 : <span>👤</span>
@@ -203,7 +209,7 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
             </div>
           )}
 
-          {/* Join button logic */}
+          {/* Join logic */}
           {currentUserId && !userInTeam && !userHasPending && (
             <div style={{ marginTop: '1rem' }}>
               <button onClick={handleJoinRequest} disabled={joining} style={{
@@ -230,58 +236,85 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
           )}
         </div>
 
-        {/* Members + dogs */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {members.map((m: any) => (
-            <div key={m.user_id} style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '1rem 1.25rem',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: m.dogs.length ? '0.75rem' : 0, cursor: 'pointer' }}
-                onClick={() => router.push(`/profile/${(m.profiles as any)?.member_id}`)}>
-                {(m.profiles as any)?.avatar_url
-                  ? <img src={(m.profiles as any).avatar_url} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                  : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>👤</div>
-                }
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-                    {(m.profiles as any)?.full_name}
-                    {m.user_id === team.created_by && <span style={{ marginLeft: '0.4rem', fontSize: '0.7rem', color: 'var(--accent)' }}>👑</span>}
-                  </p>
-                  <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>#{(m.profiles as any)?.member_id}</p>
-                </div>
-                <span style={{ fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 600 }}>
-                  {m.ownerPoints} pts
-                </span>
-              </div>
-
-              {m.dogs.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
-                  {m.dogs.map((dog: any) => (
-                    <div key={dog.id} onClick={() => router.push(`/dogs/${dog.id}`)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        background: 'var(--bg)', borderRadius: '8px', padding: '0.35rem 0.65rem',
-                        cursor: 'pointer', border: '1px solid var(--border)',
-                      }}>
-                      {dog.photo_url
-                        ? <img src={dog.photo_url} onClick={(e) => { e.stopPropagation(); setLightboxSrc(dog.photo_url) }}
-                            style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', cursor: 'zoom-in' }} />
-                        : <span style={{ fontSize: '1rem' }}>🐕</span>
-                      }
-                      <div>
-                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 600 }}>{dog.name}</p>
-                        <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                          {t((dog.breeds as any)?.name_el, (dog.breeds as any)?.name_en)}
-                        </p>
-                      </div>
+        {/* Members + their dogs */}
+        {members.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {members.map((m: any) => {
+              const profile = m.profiles as any
+              return (
+                <div key={m.user_id} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: '12px', padding: '1rem 1.25rem',
+                }}>
+                  {/* Member row */}
+                  <div
+                    onClick={() => router.push(`/profile/${profile?.member_id}`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', marginBottom: m.dogs.length ? '0.75rem' : 0 }}
+                  >
+                    {profile?.avatar_url
+                      ? <img src={profile.avatar_url} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                      : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>👤</div>
+                    }
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+                        {profile?.full_name}
+                        {m.user_id === team.created_by && (
+                          <span style={{ marginLeft: '0.4rem', fontSize: '0.7rem', color: 'var(--accent)' }}>👑</span>
+                        )}
+                      </p>
+                      <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                        #{profile?.member_id}
+                      </p>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Dogs */}
+                  {m.dogs.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                      {m.dogs.map((dog: any) => (
+                        <div
+                          key={dog.id}
+                          onClick={() => router.push(`/dogs/${dog.id}`)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            background: 'var(--bg)', borderRadius: '8px', padding: '0.35rem 0.65rem',
+                            cursor: 'pointer', border: '1px solid var(--border)',
+                            transition: 'border-color 0.15s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                        >
+                          {dog.photo_url
+                            ? <img
+                                src={dog.photo_url}
+                                onClick={e => { e.stopPropagation(); setLightboxSrc(dog.photo_url) }}
+                                style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', cursor: 'zoom-in', flexShrink: 0 }}
+                              />
+                            : <span style={{ fontSize: '1rem', flexShrink: 0 }}>🐕</span>
+                          }
+                          <div>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                              {dog.name}
+                            </p>
+                            <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                              {t(dog.breeds?.name_el, dog.breeds?.name_en)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+              )
+            })}
+          </div>
+        )}
+
+        {members.length === 0 && (
+          <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem 0' }}>
+            {t('Δεν υπάρχουν μέλη ακόμα', 'No members yet')}
+          </p>
+        )}
 
       </div>
     </main>

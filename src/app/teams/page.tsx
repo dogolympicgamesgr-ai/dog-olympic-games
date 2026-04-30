@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 import { useRouter } from 'next/navigation'
@@ -11,61 +11,64 @@ export default function TeamsPage() {
 
   const [teams, setTeams] = useState<any[]>([])
   const [totalTeams, setTotalTeams] = useState(0)
-  const [totalMembers, setTotalMembers] = useState(0)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searching, setSearching] = useState(false)
 
   useEffect(() => {
     loadTeams()
-    loadStats()
   }, [])
 
-  async function loadTeams(query = '') {
-    setSearching(true)
-    let q = supabase
+  async function loadTeams() {
+    setLoading(true)
+
+    // Single query: teams + accepted member count via aggregate
+    const { data, count } = await supabase
       .from('teams')
-      .select('id, name, description, avatar_url, created_at')
+      .select(`
+        id, name, description, avatar_url, created_at,
+        team_members!inner(id)
+      `, { count: 'exact' })
+      .eq('team_members.status', 'accepted')
       .order('created_at', { ascending: false })
-      .limit(50)
-    if (query.trim()) q = q.ilike('name', `%${query}%`)
-    const { data } = await q
+      .limit(100)
 
-    // Enrich with member count + total points (from rankings)
-    const enriched = await Promise.all((data || []).map(async (team: any) => {
-      const { data: members } = await supabase
-        .from('team_members')
-        .select('user_id')
-        .eq('team_id', team.id)
-        .eq('status', 'accepted')
-      const memberCount = members?.length || 0
-      const userIds = (members || []).map((m: any) => m.user_id)
+    // Fallback: also fetch teams with zero members (inner join excludes them)
+    const { data: allTeams, count: allCount } = await supabase
+      .from('teams')
+      .select('id, name, description, avatar_url, created_at', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .limit(100)
 
-      let totalPoints = 0
-      if (userIds.length > 0) {
-        const { data: rankRows } = await supabase
-          .from('dog_sport_ranking')
-          .select('total_points')
-          .in('owner_id', userIds)
-        totalPoints = (rankRows || []).reduce((sum: number, r: any) => sum + Number(r.total_points || 0), 0)
-      }
+    // Get member counts separately in one query
+    const { data: memberCounts } = await supabase
+      .from('team_members')
+      .select('team_id')
+      .eq('status', 'accepted')
 
-      return { ...team, memberCount, totalPoints }
+    const countMap: Record<string, number> = {}
+    for (const row of memberCounts || []) {
+      countMap[row.team_id] = (countMap[row.team_id] || 0) + 1
+    }
+
+    const enriched = (allTeams || []).map((team: any) => ({
+      ...team,
+      memberCount: countMap[team.id] || 0,
     }))
 
     setTeams(enriched)
+    setTotalTeams(allCount || 0)
     setLoading(false)
-    setSearching(false)
   }
 
-  async function loadStats() {
-    const { count: teamCount } = await supabase
-      .from('teams').select('id', { count: 'exact', head: true })
-    const { count: memberCount } = await supabase
-      .from('team_members').select('id', { count: 'exact', head: true }).eq('status', 'accepted')
-    setTotalTeams(teamCount || 0)
-    setTotalMembers(memberCount || 0)
-  }
+  // Live client-side filter — instant, no extra DB hits
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return teams
+    return teams.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      (t.description || '').toLowerCase().includes(q)
+    )
+  }, [searchQuery, teams])
 
   if (loading) return (
     <div style={{ minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -81,64 +84,62 @@ export default function TeamsPage() {
 
         {/* Header */}
         <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '2.5rem', letterSpacing: '0.05em', color: 'var(--text-primary)', margin: '0 0 0.25rem' }}>
+          <h1 style={{
+            fontFamily: 'Bebas Neue, sans-serif', fontSize: '2.5rem',
+            letterSpacing: '0.05em', color: 'var(--text-primary)', margin: '0 0 0.25rem',
+          }}>
             🛡️ {t('Ομάδες', 'Teams')}
           </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            {t('Ομάδες συμμετεχόντων και οι σκύλοι τους', 'Participant teams and their dogs')}
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>
+            {t('Σύλλογοι, λέσχες και παρέες του Canathlon', 'Clubs, groups and crews of Canathlon')}
           </p>
         </div>
 
-        {/* Stats */}
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-          {[
-            { label: t('Ομάδες', 'Teams'), value: totalTeams, icon: '🛡️' },
-            { label: t('Μέλη', 'Members'), value: totalMembers, icon: '👥' },
-          ].map(stat => (
-            <div key={stat.label} style={{
-              flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '1rem', textAlign: 'center',
-            }}>
-              <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>{stat.icon}</div>
-              <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.6rem', color: 'var(--accent)' }}>{stat.value}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{stat.label}</div>
+        {/* Single stat */}
+        <div style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: '12px', padding: '1rem 1.5rem',
+          display: 'inline-flex', alignItems: 'center', gap: '0.75rem',
+          marginBottom: '1.5rem',
+        }}>
+          <span style={{ fontSize: '1.5rem' }}>🛡️</span>
+          <div>
+            <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.6rem', color: 'var(--accent)', lineHeight: 1 }}>
+              {totalTeams}
             </div>
-          ))}
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              {t('Ενεργές Ομάδες', 'Active Teams')}
+            </div>
+          </div>
         </div>
 
-        {/* Search */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        {/* Live search */}
+        <div style={{ marginBottom: '1.5rem' }}>
           <input
             style={{
-              flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)',
+              width: '100%', boxSizing: 'border-box',
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
               borderRadius: '8px', padding: '0.65rem 0.85rem',
               color: 'var(--text-primary)', fontSize: '0.9rem',
               fontFamily: 'Outfit, sans-serif', outline: 'none',
             }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && loadTeams(searchQuery)}
             placeholder={t('Αναζήτηση ομάδας...', 'Search teams...')}
           />
-          <button onClick={() => loadTeams(searchQuery)} disabled={searching} style={{
-            background: 'var(--accent)', border: 'none', borderRadius: '8px',
-            padding: '0.65rem 1.25rem', color: 'var(--bg)',
-            fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif',
-            fontSize: '0.9rem', whiteSpace: 'nowrap',
-          }}>
-            {searching ? '...' : t('Αναζήτηση', 'Search')}
-          </button>
         </div>
 
         {/* Teams list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {teams.length === 0 && (
+          {filtered.length === 0 && (
             <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '3rem 0' }}>
               {t('Δεν βρέθηκαν ομάδες', 'No teams found')}
             </p>
           )}
-          {teams.map((team: any) => (
-            <div key={team.id} onClick={() => router.push(`/teams/${team.id}`)}
+          {filtered.map((team: any) => (
+            <div
+              key={team.id}
+              onClick={() => router.push(`/teams/${team.id}`)}
               style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)',
                 borderRadius: '12px', padding: '1rem 1.25rem',
@@ -162,10 +163,9 @@ export default function TeamsPage() {
                   </p>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.15rem', flexShrink: 0 }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>👥 {team.memberCount}</span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 600 }}>{team.totalPoints} pts</span>
-              </div>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
+                👥 {team.memberCount}
+              </span>
             </div>
           ))}
         </div>
