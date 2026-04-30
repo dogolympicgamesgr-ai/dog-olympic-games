@@ -58,7 +58,7 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
     const userIds = memberRows.map((m: any) => m.user_id)
     const { data: allDogs } = await supabase
       .from('dogs')
-      .select('id, name, photo_url, owner_id, breed_id, breeds(name_el, name_en)')
+      .select('id, name, photo_url, owner_id, breed_id, breeds(name)')
       .in('owner_id', userIds)
       .eq('status', 'active')
 
@@ -297,7 +297,7 @@ export default function TeamProfilePage({ params }: { params: Promise<{ id: stri
                               {dog.name}
                             </p>
                             <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                              {t(dog.breeds?.name_el, dog.breeds?.name_en)}
+                              {dog.breeds?.name}
                             </p>
                           </div>
                         </div>
