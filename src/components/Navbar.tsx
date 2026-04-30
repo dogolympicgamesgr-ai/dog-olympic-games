@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 import type { User } from '@supabase/supabase-js'
+
+const router = useRouter()
 
 const aboutLinks = [
   { href: '/about',  el: 'Τι είναι το άθλημα', en: 'About the Sport' },
@@ -106,14 +108,18 @@ export default function Navbar() {
       try {
         const res = await fetch('/auth/session')
         const data = await res.json()
-        if (data.user) {
-          setUser(data.user)
-          setProfileName(data.profile?.full_name || '')
-          setIsAdmin(data.isAdmin)
-          setRoles(data.roles || [])
-          fetchUnreadCount(data.user.id)
-          fetchAttentionFlags(data.user.id, data.roles || [])
-        }
+      if (data.user) {
+  if (data.profile?.status === 'banned') {
+    router.push('/banned')
+    return
+  }
+  setUser(data.user)
+  setProfileName(data.profile?.full_name || '')
+  setIsAdmin(data.isAdmin)
+  setRoles(data.roles || [])
+  fetchUnreadCount(data.user.id)
+  fetchAttentionFlags(data.user.id, data.roles || [])
+}
       } catch (err) {
         console.error('session fetch error:', err)
       }
