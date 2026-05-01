@@ -364,10 +364,7 @@ export default function DogProfilePage() {
                 <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontSize: '1.2rem' }}>⭐</span>
-                    <div>
-                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{t('Εισαγωγικό Επίπεδο', 'Entry Level')}</p>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>{t('Συμμετοχές', 'Participations')}: {foundationRank.entry_participations}/2</p>
-                    </div>
+                    <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{t('Εισαγωγικό Επίπεδο', 'Entry Level')}</p>
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '99px', background: foundationRank.entry_title ? 'rgba(126,184,247,0.15)' : 'var(--bg)', border: `1px solid ${foundationRank.entry_title ? '#7eb8f7' : 'var(--border)'}`, color: foundationRank.entry_title ? '#7eb8f7' : 'var(--text-secondary)' }}>
                     {foundationRank.entry_title ? '🏅 ' + t('Τίτλος', 'Title') : t('Σε εξέλιξη', 'In progress')}
@@ -377,10 +374,7 @@ export default function DogProfilePage() {
                 <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontSize: '1.2rem' }}>⭐⭐</span>
-                    <div>
-                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{t('Βασικό Επίπεδο', 'Basic Level')}</p>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>{t('Συμμετοχές', 'Participations')}: {foundationRank.basic_participations}/2</p>
-                    </div>
+                    <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{t('Βασικό Επίπεδο', 'Basic Level')}</p>
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '99px', background: foundationRank.basic_title ? 'rgba(126,247,160,0.15)' : 'var(--bg)', border: `1px solid ${foundationRank.basic_title ? '#7ef7a0' : 'var(--border)'}`, color: foundationRank.basic_title ? '#7ef7a0' : 'var(--text-secondary)' }}>
                     {foundationRank.basic_title ? '🏅 ' + t('Τίτλος', 'Title') : foundationRank.entry_title ? t('Σε εξέλιξη', 'In progress') : t('Κλειδωμένο', 'Locked')}
@@ -397,7 +391,6 @@ export default function DogProfilePage() {
                       <span style={{ fontSize: '1.2rem' }}>{icon}</span>
                       <div>
                         <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.88rem', margin: 0 }}>{sportName} — {t('Επίπεδο', 'Level')} {sr.current_sublevel}</p>
-                        <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>{t('Συμμετοχές', 'Participations')}: {sr.participations}/2 · {t('Σύνολο πόντων', 'Total points')}: {sr.total_points}</p>
                       </div>
                     </div>
                     <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.65rem', borderRadius: '99px', background: sr.title ? 'rgba(232,185,79,0.15)' : 'var(--bg)', border: `1px solid ${sr.title ? 'var(--accent)' : 'var(--border)'}`, color: sr.title ? 'var(--accent)' : 'var(--text-secondary)' }}>
