@@ -27,7 +27,7 @@ export default function StatsCircles({
   eventCount: number
   dogs: any[]
   results: any[]
-  dogRankings: DogRanking[]
+  dogRankings?: DogRanking[]
 }) {
   const { t } = useLang()
   const router = useRouter()
@@ -36,7 +36,7 @@ export default function StatsCircles({
   // Build flat list of all titles across all dogs
   const allTitles: { dogName: string; dogId: string; label: string; icon: string; color: string }[] = []
 
-  for (const { dog, foundationRank, sportRanks } of dogRankings) {
+ for (const { dog, foundationRank, sportRanks } of (dogRankings ?? [])) {
     if (foundationRank?.entry_title) {
       allTitles.push({
         dogName: dog.name,
