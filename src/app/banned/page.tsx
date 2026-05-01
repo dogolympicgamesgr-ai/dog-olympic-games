@@ -1,15 +1,24 @@
 'use client'
 import { Suspense } from 'react'
+import { useState, useEffect } from 'react'
 import { useLang } from '@/context/LanguageContext'
 import { createClient } from '@/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 
 function BannedContent() {
   const { t } = useLang()
   const router = useRouter()
   const supabase = createClient()
-  const searchParams = useSearchParams()
-  const reason = searchParams.get('reason')
+  const [reason, setReason] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchReason() {
+      const res = await fetch('/auth/session')
+      const data = await res.json()
+      if (data.profile?.ban_reason) setReason(data.profile.ban_reason)
+    }
+    fetchReason()
+  }, [])
 
   async function handleSignOut() {
     await supabase.auth.signOut()
