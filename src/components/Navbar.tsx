@@ -7,8 +7,6 @@ import { createClient } from '@/lib/supabase'
 import { useLang } from '@/context/LanguageContext'
 import type { User } from '@supabase/supabase-js'
 
-
-
 const aboutLinks = [
   { href: '/about',  el: 'Τι είναι το άθλημα', en: 'About the Sport' },
   { href: '/rules',  el: 'Κανονισμοί',          en: 'Rules' },
@@ -30,6 +28,7 @@ export default function Navbar() {
   const router = useRouter()
   const { lang, setLang, t } = useLang()
   const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<any>(null)
   const [profileName, setProfileName] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [roles, setRoles] = useState<string[]>([])
@@ -53,25 +52,31 @@ export default function Navbar() {
   const aboutRef = useRef<HTMLDivElement>(null)
   const communityRef = useRef<HTMLDivElement>(null)
 
+  // ADDED: Real-time ban enforcement
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (aboutRef.current && !aboutRef.current.contains(e.target as Node)) setAboutOpen(false)
-      if (communityRef.current && !communityRef.current.contains(e.target as Node)) setCommunityOpen(false)
+    if (!user) return
+    
+    const channel = supabase
+      .channel('profile-ban')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${user.id}`,
+      }, (payload) => {
+        if (payload.new.status === 'banned') {
+          supabase.auth.signOut()
+          router.push('/banned')
+        }
+      })
+      .subscribe()
+    
+    return () => {
+      supabase.removeChannel(channel)
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+  }, [user, supabase, router])
 
-  async function fetchUnreadCount(userId: string) {
-    const { count } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('read', false)
-    setUnreadCount(count || 0)
-  }
-
-  async function fetchAttentionFlags(userId: string, userRoles: string[]) {
+  const fetchAttentionFlags = useCallback(async (userId: string, userRoles: string[]) => {
     const now = new Date().toISOString()
     const [judgeRes, decoyRes, orgRes, teamRes] = await Promise.all([
       userRoles.includes('judge')
@@ -94,7 +99,16 @@ export default function Navbar() {
     setPendingDecoy((decoyRes.count || 0) > 0)
     setPendingOrganizer((orgRes.count || 0) > 0)
     setPendingTeam((teamRes.count || 0) > 0)
-  }
+  }, [supabase])
+
+  const fetchUnreadCount = useCallback(async (userId: string) => {
+    const { count } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('read', false)
+    setUnreadCount(count || 0)
+  }, [supabase])
 
   useEffect(() => {
     setDrawerOpen(false)
@@ -102,25 +116,28 @@ export default function Navbar() {
       fetchUnreadCount(user.id)
       fetchAttentionFlags(user.id, roles)
     }
-  }, [pathname, user, roles])
+    if (profile?.status === 'banned') {
+      router.push('/banned')
+    }
+  }, [pathname, user, roles, profile?.status, router, fetchUnreadCount, fetchAttentionFlags])
 
   useEffect(() => {
     async function init() {
       try {
         const res = await fetch('/auth/session')
         const data = await res.json()
-      if (data.user) {
-  if (data.profile?.status === 'banned') {
-    router.push('/banned')
-    return
-  }
-  setUser(data.user)
-  setProfileName(data.profile?.full_name || '')
-  setIsAdmin(data.isAdmin)
-  setRoles(data.roles || [])
-  fetchUnreadCount(data.user.id)
-  fetchAttentionFlags(data.user.id, data.roles || [])
+        if (data.user) {
+         if (data.profile?.status === 'banned') {
+  const reason = data.profile.ban_reason ? `?reason=${encodeURIComponent(data.profile.ban_reason)}` : ''
+  router.push(`/banned${reason}`)
+  return
 }
+          setUser(data.user)
+          setProfile(data.profile)
+          setProfileName(data.profile?.full_name || '')
+          setIsAdmin(data.isAdmin)
+          setRoles(data.roles || [])
+        }
       } catch (err) {
         console.error('session fetch error:', err)
       }
@@ -129,30 +146,44 @@ export default function Navbar() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!session?.user) {
-        setUser(null); setProfileName(''); setIsAdmin(false)
-        setRoles([]); setUnreadCount(0)
-        setPendingJudge(false); setPendingDecoy(false)
-        setPendingOrganizer(false); setPendingTeam(false)
+        setUser(null)
+        setProfile(null)
+        setProfileName('')
+        setIsAdmin(false)
+        setRoles([])
+        setUnreadCount(0)
+        setPendingJudge(false)
+        setPendingDecoy(false)
+        setPendingOrganizer(false)
+        setPendingTeam(false)
       } else {
         try {
           const res = await fetch('/auth/session')
           const data = await res.json()
           setUser(data.user)
+          setProfile(data.profile)
           setProfileName(data.profile?.full_name || '')
           setIsAdmin(data.isAdmin)
           setRoles(data.roles || [])
-          fetchUnreadCount(data.user.id)
-          fetchAttentionFlags(data.user.id, data.roles || [])
         } catch {}
       }
     })
     return () => subscription.unsubscribe()
-  }, [supabase])
+  }, [supabase, router])
 
   useEffect(() => {
     function onDashboardDrawer() { setDrawerOpen(true) }
     window.addEventListener('open-dashboard-drawer', onDashboardDrawer)
     return () => window.removeEventListener('open-dashboard-drawer', onDashboardDrawer)
+  }, [])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (aboutRef.current && !aboutRef.current.contains(e.target as Node)) setAboutOpen(false)
+      if (communityRef.current && !communityRef.current.contains(e.target as Node)) setCommunityOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
   const handleLogin = async () => {
@@ -230,6 +261,10 @@ export default function Navbar() {
 
   const aboutActive = aboutLinks.some(l => pathname === l.href)
   const communityActive = communityLinks.some(l => pathname === l.href)
+
+  if (profile?.status === 'banned') {
+    return null
+  }
 
   return (
     <>
@@ -421,7 +456,7 @@ export default function Navbar() {
                     🏠 {t('Dashboard', 'Dashboard')}
                   </Link>
 
-                  <Link href="/notifications" style={drawerLinkStyle(pathname === '/notifications')} onClick={() => setUnreadCount(0)}>
+                  <Link href="/notifications" style={drawerLinkStyle(pathname === '/notifications')}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
                       🔔 {t('Ειδοποιήσεις', 'Notifications')}
                     </span>
