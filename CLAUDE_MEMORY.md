@@ -239,3 +239,15 @@ Sections: Users, Roles, Events, Seminars, Results, Teams, Dogs, Absences, Commun
 
 - **(D)** Notification action links — `action_url` column exists, UI never uses it
 - **Dog profile:** Title circles should show Entry + Basic independently; headline discipline = highest sublevel not most points
+## Session Log — May 2026
+
+### Completed
+- Placeholder pages: /about, /rules, /videos, /terms (pure server components, no hooks)
+- teams/page.tsx: removed points, live client-side search, single stat, 2-query architecture
+- teams/[id]/page.tsx: removed points, fixed dogs N+1 (single batched query), breeds fix
+- Ban system: navbar checks on init + every pathname change + real-time Supabase channel, /banned page with reason fetched from /auth/session
+- notifications.expires_at default: 30 days → 7 days (DB column default altered)
+- breeds table: only has id+name (no name_el/name_en) — always use breeds(name), render as dog.breeds?.name with no t()
+
+### Pending DB Cleanup (needs admin approval)
+- teams table: drop point-related columns (total_points etc) — UI already removed, columns dormant

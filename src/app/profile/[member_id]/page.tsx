@@ -20,9 +20,9 @@ export default function PublicProfilePage() {
   const [team, setTeam] = useState<any>(null)
   const [dogs, setDogs] = useState<any[]>([])
   const [results, setResults] = useState<any[]>([])
+  const [dogRankings, setDogRankings] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
-  // NEW: viewer session for conditional warning visibility
   const [viewerSession, setViewerSession] = useState<any>(null)
 
   useEffect(() => {
@@ -44,7 +44,6 @@ export default function PublicProfilePage() {
       return
     }
 
-    // NEW: Add session fetch to Promise.all
     const [rolesRes, teamRes, dogsRes, resultsRes, sessionRes] = await Promise.all([
       supabase.from('user_roles').select('role').eq('user_id', prof.id),
       supabase.from('team_members').select('*, teams(*)').eq('user_id', prof.id).eq('status', 'accepted').maybeSingle(),
@@ -53,15 +52,52 @@ export default function PublicProfilePage() {
       fetch('/auth/session').then(r => r.json()),
     ])
 
+    const activeDogs = dogsRes.data || []
+
     setProfile(prof)
     const allRoles = rolesRes.data?.map((r: any) => r.role) || []
     setIsAdmin(allRoles.includes('admin'))
     setRoles(allRoles.filter((r: string) => r !== 'participant' && r !== 'admin'))
     setTeam(teamRes.data?.teams || null)
-    setDogs(dogsRes.data || [])
+    setDogs(activeDogs)
     setResults(resultsRes.data || [])
-    // NEW: Set viewer session
     setViewerSession(sessionRes)
+
+    // Fetch ranking data for all active dogs
+    if (activeDogs.length > 0) {
+      const dogIds = activeDogs.map((d: any) => d.id)
+
+      const [foundationRes, sportRes] = await Promise.all([
+        supabase
+          .from('foundation_ranking')
+          .select('dog_id, entry_title, basic_title, entry_participations, basic_participations')
+          .in('dog_id', dogIds),
+        supabase
+          .from('dog_sport_ranking')
+          .select('*, sports(id, name_el, name_en, is_foundation)')
+          .in('dog_id', dogIds),
+      ])
+
+      const foundationMap: Record<string, any> = {}
+      for (const row of (foundationRes.data || [])) {
+        foundationMap[row.dog_id] = row
+      }
+
+      const sportMap: Record<string, any[]> = {}
+      for (const row of (sportRes.data || [])) {
+        if (!sportMap[row.dog_id]) sportMap[row.dog_id] = []
+        sportMap[row.dog_id].push(row)
+      }
+
+      const rankings = activeDogs.map((dog: any) => ({
+        dog,
+        foundationRank: foundationMap[dog.id] || null,
+        sportRanks: sportMap[dog.id] || [],
+      }))
+
+      setDogRankings(rankings)
+    }
+
     setLoading(false)
   }
 
@@ -84,17 +120,15 @@ export default function PublicProfilePage() {
 
   const isTeamLeader = team && team.created_by === profile?.id
 
-  // NEW: Check if viewer can see no-show warning
-  const canSeeNoShowWarning = profile?.no_show_count > 0 && 
-    (viewerSession?.isAdmin || 
-     viewerSession?.roles?.includes('organizer') || 
+  const canSeeNoShowWarning = profile?.no_show_count > 0 &&
+    (viewerSession?.isAdmin ||
+     viewerSession?.roles?.includes('organizer') ||
      viewerSession?.user?.id === profile?.id)
 
   return (
     <main style={{ minHeight: '90vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 1rem' }}>
 
-        {/* NEW: No-show warning banner — visible only to admin/organizer/owner */}
         {canSeeNoShowWarning && (
           <div style={{
             background: 'rgba(247,126,126,0.1)',
@@ -184,7 +218,14 @@ export default function PublicProfilePage() {
           </div>
         </div>
 
-        <StatsCircles dogCount={dogs.length} eventCount={results.length} dogs={dogs} results={results} />
+        <StatsCircles
+          dogCount={dogs.length}
+          eventCount={results.length}
+          dogs={dogs}
+          results={results}
+          dogRankings={dogRankings}
+        />
+
         <EventsList results={results} profile={profile} />
       </div>
 

@@ -7,10 +7,15 @@ import { useLang } from '@/context/LanguageContext'
 import DogTitleCircles, { TitleCircle } from '@/components/dashboard/DogTitleCircles'
 
 const DISCIPLINE_ICONS: Record<string, string> = {
-  'Υπακοή':   '🎯',
+  'Υπακοή':    '🎯',
   'Προστασία': '🛡️',
   'Ανίχνευση': '🔍',
   'Ευκινησία': '⚡',
+}
+
+const FOUNDATION_LABELS: Record<string, { el: string; en: string }> = {
+  entry: { el: 'Εισαγωγικό Επίπεδο', en: 'Entry Level' },
+  basic: { el: 'Βασικό Επίπεδο',     en: 'Basic Level'  },
 }
 
 export default function DogProfilePage() {
@@ -24,6 +29,7 @@ export default function DogProfilePage() {
   const [results, setResults] = useState<any[]>([])
   const [foundationRank, setFoundationRank] = useState<any>(null)
   const [sportRanks, setSportRanks] = useState<any[]>([])
+  const [bestRank, setBestRank] = useState<{ position: number; labelEl: string; labelEn: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(false)
 
@@ -36,7 +42,7 @@ export default function DogProfilePage() {
   }, [id])
 
   async function loadDog(dogId: string) {
-    const [dogRes, resultsRes, foundationRes, sportRes] = await Promise.all([
+    const [dogRes, resultsRes, foundationRes, sportRes, rankRes] = await Promise.all([
       supabase.from('dogs').select('*, breeds(name)').eq('id', dogId).single(),
       supabase.from('competition_results')
         .select('*, events(id, title_el, title_en, event_date, location), event_categories(title_el, title_en)')
@@ -50,6 +56,7 @@ export default function DogProfilePage() {
       supabase.from('dog_sport_ranking')
         .select('*, sports(id, name_el, name_en, is_foundation)')
         .eq('dog_id', dogId),
+      supabase.rpc('get_dog_best_rank', { p_dog_id: dogId }),
     ])
 
     if (!dogRes.data) { router.push('/'); return }
@@ -57,6 +64,17 @@ export default function DogProfilePage() {
     setResults(resultsRes.data || [])
     setFoundationRank(foundationRes.data || null)
     setSportRanks(sportRes.data || [])
+
+    const rankRow = rankRes.data?.[0]
+    if (rankRow) {
+      const foundationLabel = FOUNDATION_LABELS[rankRow.category_label_el]
+      setBestRank({
+        position: Number(rankRow.rank_position),
+        labelEl: foundationLabel ? foundationLabel.el : rankRow.category_label_el,
+        labelEn: foundationLabel ? foundationLabel.en : rankRow.category_label_en,
+      })
+    }
+
     setLoading(false)
 
     const ownerRes = await supabase
@@ -96,11 +114,9 @@ export default function DogProfilePage() {
 
   const isDeceased = dog.status === 'in_our_memories'
 
-  // CHANGE 1: Updated title circles block
   const titleCircles: TitleCircle[] = []
 
   if (foundationRank) {
-    // Entry — always show if any activity
     if (foundationRank.entry_participations > 0 || foundationRank.entry_title) {
       titleCircles.push({
         icon: '⭐', label: t('Εισαγωγικό', 'Entry'), color: '#7eb8f7',
@@ -108,7 +124,6 @@ export default function DogProfilePage() {
         progress: foundationRank.entry_title ? undefined : `${foundationRank.entry_participations}/2`
       })
     }
-    // Basic — always show if any activity, locked if no entry_title
     if (foundationRank.basic_participations > 0 || foundationRank.basic_title) {
       titleCircles.push({
         icon: '⭐⭐', label: t('Βασικό', 'Basic'), color: '#7ef7a0',
@@ -136,7 +151,6 @@ export default function DogProfilePage() {
 
   const earnedCount = titleCircles.filter(c => c.earned).length
 
-  // CHANGE 2: Find top discipline
   const topDiscipline = sportRanks
     .filter(sr => !sr.sports?.is_foundation && (sr.participations > 0 || sr.title))
     .sort((a, b) => b.current_sublevel !== a.current_sublevel
@@ -188,10 +202,7 @@ export default function DogProfilePage() {
           {/* Left — owner */}
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             {owner && (
-              <div
-                onClick={() => router.push(`/profile/${owner.member_id}`)}
-                style={{ cursor: 'pointer', textAlign: 'center' }}
-              >
+              <div onClick={() => router.push(`/profile/${owner.member_id}`)} style={{ cursor: 'pointer', textAlign: 'center' }}>
                 <div style={{
                   width: '72px', height: '72px', borderRadius: '50%',
                   border: '2px solid var(--accent)', overflow: 'hidden',
@@ -214,14 +225,10 @@ export default function DogProfilePage() {
           {/* Center — dog photo + title orbit */}
           <div style={{
             position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
             height: '220px',
           }}>
             <DogTitleCircles circles={titleCircles} />
-
-            {/* Dog photo */}
             <div
               onClick={() => dog.photo_url && setLightbox(true)}
               style={{
@@ -247,7 +254,6 @@ export default function DogProfilePage() {
 
         {/* Mobile layout */}
         <div className="circles-mobile" style={{ marginBottom: '2rem' }}>
-          {/* Dog photo */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
             <div
               onClick={() => dog.photo_url && setLightbox(true)}
@@ -266,12 +272,8 @@ export default function DogProfilePage() {
             </div>
           </div>
 
-          {/* Owner on mobile */}
           {owner && (
-            <div
-              onClick={() => router.push(`/profile/${owner.member_id}`)}
-              style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', cursor: 'pointer' }}
-            >
+            <div onClick={() => router.push(`/profile/${owner.member_id}`)} style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', cursor: 'pointer' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
                 background: 'var(--bg-card)', borderRadius: '99px',
@@ -287,7 +289,6 @@ export default function DogProfilePage() {
             </div>
           )}
 
-          {/* Title circles on mobile */}
           <DogTitleCircles circles={titleCircles} />
         </div>
 
@@ -297,9 +298,14 @@ export default function DogProfilePage() {
           gap: '1rem', maxWidth: '400px', margin: '0 auto 2rem',
         }}>
           {[
-            { label: t('Αγώνες', 'Events'), value: results.length },
-            { label: t('Τίτλοι', 'Titles'), value: earnedCount },
-            { label: t('Αθλήματα', 'Sports'), value: sportRanks.length },
+            { label: t('Αγώνες', 'Events'), value: String(results.length) },
+            { label: t('Τίτλοι', 'Titles'), value: String(earnedCount) },
+            {
+              label: bestRank
+                ? t(bestRank.labelEl, bestRank.labelEn)
+                : t('Κατάταξη', 'Ranking'),
+              value: bestRank ? `#${bestRank.position}` : '—',
+            },
           ].map(stat => (
             <div key={stat.label} style={{
               background: 'var(--bg-card)', border: '1px solid var(--border)',
@@ -308,29 +314,24 @@ export default function DogProfilePage() {
               alignItems: 'center', justifyContent: 'center',
               boxShadow: '0 0 20px rgba(232,185,79,0.08)',
             }}>
-              <p style={{ fontSize: 'clamp(1rem, 2.5vw, 1.4rem)', fontFamily: 'Bebas Neue, sans-serif', color: 'var(--accent)', letterSpacing: '0.05em' }}>
+              <p style={{ fontSize: 'clamp(1rem, 2.5vw, 1.4rem)', fontFamily: 'Bebas Neue, sans-serif', color: 'var(--accent)', letterSpacing: '0.05em', margin: 0 }}>
                 {stat.value}
               </p>
-              <p style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center', padding: '0 0.25rem' }}>
+              <p style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center', padding: '0 0.25rem', margin: 0 }}>
                 {stat.label}
               </p>
             </div>
           ))}
         </div>
 
-        {/* CHANGE 2: Top discipline card */}
+        {/* Top discipline card */}
         {topDiscipline && (
           <div style={{
             background: 'linear-gradient(135deg, rgba(212,175,55,0.08) 0%, rgba(212,175,55,0.02) 100%)',
             border: '1px solid rgba(212,175,55,0.3)',
-            borderRadius: '14px',
-            padding: '1rem 1.25rem',
-            marginBottom: '1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
+            borderRadius: '14px', padding: '1rem 1.25rem', marginBottom: '1.5rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexWrap: 'wrap', gap: '0.75rem',
           }}>
             <div>
               <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -445,13 +446,13 @@ export default function DogProfilePage() {
                 </p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                {r.placement && <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)' }}>#{r.placement}</p>}
-                {r.score != null && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{r.score} pts</p>}
-                <p style={{ fontSize: '0.72rem', fontWeight: 600, color: r.passed ? '#7ef7a0' : '#f77e7e' }}>
+                {r.placement && <p style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.3rem', color: 'var(--accent)', margin: 0 }}>#{r.placement}</p>}
+                {r.score != null && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>{r.score} pts</p>}
+                <p style={{ fontSize: '0.72rem', fontWeight: 600, color: r.passed ? '#7ef7a0' : '#f77e7e', margin: 0 }}>
                   {r.passed ? '✓ Pass' : '✗ Fail'}
                 </p>
                 {r.passed && r.title_earned && (
-                  <p style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600 }}>🏅 {t('Τίτλος', 'Title')}</p>
+                  <p style={{ fontSize: '0.68rem', color: 'var(--accent)', fontWeight: 600, margin: 0 }}>🏅 {t('Τίτλος', 'Title')}</p>
                 )}
               </div>
             </div>
