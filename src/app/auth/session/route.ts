@@ -8,7 +8,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ user: null, profile: null, isAdmin: false, roles: [] })
 
     const [profileRes, rolesRes] = await Promise.all([
-      supabase.from('profiles').select('full_name').eq('id', user.id).single(),
+     supabase.from('profiles').select('full_name, status').eq('id', user.id).single(),
       supabase.from('user_roles').select('role').eq('user_id', user.id),
     ])
 
