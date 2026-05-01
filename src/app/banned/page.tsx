@@ -1,9 +1,10 @@
 'use client'
+import { Suspense } from 'react'
 import { useLang } from '@/context/LanguageContext'
 import { createClient } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function BannedPage() {
+function BannedContent() {
   const { t } = useLang()
   const router = useRouter()
   const supabase = createClient()
@@ -51,5 +52,13 @@ export default function BannedPage() {
         {t('Αποσύνδεση', 'Sign out')}
       </button>
     </div>
+  )
+}
+
+export default function BannedPage() {
+  return (
+    <Suspense>
+      <BannedContent />
+    </Suspense>
   )
 }
