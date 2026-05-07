@@ -168,7 +168,7 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
   const statusLabel = (s: string) =>
     s === 'active' ? t('Ενεργός', 'Active') :
     s === 'retired' ? t('Αποσυρμένος', 'Retired') :
-    s === 'in_our_memories' ? t('Στη μνήμη του', 'In our memories') : s
+    s === 'in_our_memories' ? t('Στις αναμνήσεις μας', 'In our memories') : s
 
   const statusColor = (s: string) =>
     s === 'active' ? '#4caf50' :
@@ -228,7 +228,7 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
             >
               <option value="active">{t('Ενεργός', 'Active')}</option>
               <option value="retired">{t('Αποσυρμένος', 'Retired')}</option>
-              <option value="in_our_memories">{t('Στη μνήμη του', 'In our memories')}</option>
+              <option value="in_our_memories">{t('Στις αναμνήσεις μας', 'In our memories')}</option>
             </select>
 
             {confirmDeleteId === dog.id ? (

@@ -283,7 +283,7 @@ async function handleInvite() {
     const categoryLabel = invitingRole.categoryId
       ? categories.find(c => c.id === invitingRole.categoryId)?.title_el || '' : ''
     const eventTitle = event?.title_el || ''
-    const roleLabel = invitingRole.role === 'judge' ? 'Κριτής' : 'Δόλωμα'
+    const roleLabel = invitingRole.role === 'judge' ? 'Κριτής' : 'Decοy'
     const roleLabelEn = invitingRole.role === 'judge' ? 'Judge' : 'Decoy'
 
     if (!isSelfInvite) {
@@ -317,7 +317,7 @@ async function handleInvite() {
     const assignment = assignments.find(a => a.id === assignmentId)
     if (assignment && event?.created_by) {
       const responderName = session?.profile?.full_name || 'Someone'
-      const roleLabel = assignment.role === 'judge' ? 'Κριτής' : 'Δόλωμα'
+      const roleLabel = assignment.role === 'judge' ? 'Κριτής' : 'Decοy'
       const roleLabelEn = assignment.role === 'judge' ? 'Judge' : 'Decoy'
       const statusEl = newStatus === 'accepted' ? 'αποδέχθηκε' : 'αρνήθηκε'
       const statusEn = newStatus === 'accepted' ? 'accepted' : 'declined'
@@ -537,7 +537,7 @@ async function handleInvite() {
                   <div key={a.id} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
                       {a.role === 'judge' ? '⚖️ ' : '🎯 '}
-                      {a.role === 'judge' ? t('Κριτής', 'Judge') : t('Δόλωμα', 'Decoy')}
+                      {a.role === 'judge' ? t('Κριτής', 'Judge') : t('Decοy', 'Decoy')}
                       {cat && ` — ${t(cat.title_el, cat.title_en || cat.title_el)}`}
                     </p>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -725,7 +725,7 @@ async function handleInvite() {
         {/* Decoys */}
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <p style={{ ...sectionTitle, margin: 0 }}>🎯 {t('Δόλωμα', 'Decoys')}</p>
+            <p style={{ ...sectionTitle, margin: 0 }}>🎯 {t('Decοy', 'Decoys')}</p>
             {canManageAssignments && (
               <button onClick={() => { setInvitingRole(invitingRole?.role === 'decoy' ? null : { role: 'decoy', categoryId: null }); setSelectedInviteUser(''); setAssignMsg(null) }} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.35rem 0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.75rem' }}>
                 + {t('Πρόσκληση', 'Invite')}
@@ -737,7 +737,7 @@ async function handleInvite() {
               {assignMsg && <p style={{ fontSize: '0.8rem', color: assignMsg.type === 'success' ? '#00c864' : '#dc3232', marginBottom: '0.5rem' }}>{assignMsg.text}</p>}
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)} style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
-                  <option value="">{t('Επίλεξε δόλωμα...', 'Select decoy...')}</option>
+                  <option value="">{t('Επίλεξε Decοy...', 'Select decoy...')}</option>
                   {availableDecoys.map((d: any) => <option key={d.user_id} value={d.user_id}>{d.profiles?.full_name} #{d.profiles?.member_id}</option>)}
                 </select>
                 <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading} style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
@@ -746,7 +746,7 @@ async function handleInvite() {
               </div>
             </div>
           )}
-          {visibleDecoys.length === 0 && <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{t('Δεν έχει οριστεί δόλωμα ακόμα', 'No decoy assigned yet')}</p>}
+          {visibleDecoys.length === 0 && <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{t('Δεν έχει οριστεί Decοy ακόμα', 'No decoy assigned yet')}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {visibleDecoys.map((a: any) => (
               <div key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)', border: `1px solid ${assignStatusColor(a.status)}44`, borderRadius: '10px', padding: '0.65rem 1rem' }}>

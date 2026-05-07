@@ -112,6 +112,8 @@
 - `entry_top2_points`, `basic_top2_points`, `entry_locked`, `basic_locked`
 - Lock logic: `entry_locked=true` on any Basic attempt; `basic_locked=true` on any discipline attempt
 - Score = top 2 successful attempts sum. 2 passes = title minimum.
+- `entry_participations` / `basic_participations` count **successful passes only**, NOT total runs — never use for display as "times run"
+- A dog can run at the same level unlimited times; lock triggers only on attempting the next stage
 
 ### `dog_sport_ranking`
 - `dog_id`, `sport_id`, `current_sublevel`, `participations`, `title`, `total_points`
@@ -238,7 +240,6 @@ Sections: Users, Roles, Events, Seminars, Results, Teams, Dogs, Absences, Commun
 ## Pending Fixes (move to Claude dynamic memory when working on these)
 
 - **(D)** Notification action links — `action_url` column exists, UI never uses it
-- **Dog profile:** Title circles should show Entry + Basic independently; headline discipline = highest sublevel not most points
 ## Session Log — May 2026
 
 ### Completed
@@ -251,3 +252,9 @@ Sections: Users, Roles, Events, Seminars, Results, Teams, Dogs, Absences, Commun
 
 ### Pending DB Cleanup (needs admin approval)
 - teams table: drop point-related columns (total_points etc) — UI already removed, columns dormant
+- dogs/[id]/page.tsx: 3rd stat circle replaced with Best Rank (#N + category) via get_dog_best_rank() Postgres function
+- profile/[member_id]/page.tsx: fetches foundation+sport rankings for all active dogs, passes dogRankings to StatsCircles
+- StatsCircles.tsx: dropped 3rd circle, now Dogs+Events only; added Titles section listing all earned titles across owner's active dogs grouped by dog, clickable to dog page
+- Ranking rows on dog page: participation counts removed entirely (data unreliable — counts passes not runs)
+- get_dog_best_rank(p_dog_id uuid): Postgres function returning best rank position across all categories; mirrors ranking page sort logic; uses $func$ delimiter (Greek chars break $$ in Supabase editor); foundation returns 'entry'/'basic' keys mapped client-side via FOUNDATION_LABELS
+- StatsCircles dogRankings prop is optional (?) — dashboard page uses StatsCircles without it

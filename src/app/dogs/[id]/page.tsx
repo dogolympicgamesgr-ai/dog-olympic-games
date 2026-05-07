@@ -176,7 +176,7 @@ export default function DogProfilePage() {
             Dog ID: {dog.dog_id}
           </p>
           <p style={{ fontSize: '0.85rem', fontWeight: 600, color: statusColor(dog.status || 'active'), marginBottom: '0.2rem' }}>
-            ● {dog.status === 'active' ? t('Ενεργός', 'Active') : dog.status === 'retired' ? t('Αποσυρμένος', 'Retired') : '🕯️ ' + t('Στη μνήμη του', 'In our memories')}
+            ● {dog.status === 'active' ? t('Ενεργός', 'Active') : dog.status === 'retired' ? t('Αποσυρμένος', 'Retired') : '🕯️ ' + t('Στις αναμνήσεις μας', 'In our memories')}
           </p>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
             {dog.breeds?.name || t('Άγνωστη φυλή', 'Unknown breed')}
