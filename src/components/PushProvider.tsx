@@ -98,7 +98,7 @@ export default function PushProvider({ children }: { children: React.ReactNode }
               </p>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
-                  onClick={() => { setShowProfileNudge(false); router.push('/profile') }}
+                  onClick={() => { setShowProfileNudge(false); router.push('/profile/edit') }}
                   style={{ flex: 1, background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.6rem', color: 'var(--bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem' }}
                 >
                   {t('Συμπλήρωσε Προφίλ', 'Complete Profile')}
