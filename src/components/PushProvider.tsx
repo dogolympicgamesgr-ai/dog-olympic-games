@@ -31,7 +31,7 @@ export default function PushProvider({ children }: { children: React.ReactNode }
     if (!session?.user) return
 
     // First login nudge — show if full_name is empty
-    if (!session.profile?.full_name) {
+    if (!session.profile?.phone) {
       setShowProfileNudge(true)
     }
 

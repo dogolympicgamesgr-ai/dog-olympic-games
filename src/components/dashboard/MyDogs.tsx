@@ -54,6 +54,10 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
       setSaveError(t('Το φύλο είναι υποχρεωτικό', 'Gender is required'))
       return
     }
+    if (!form.date_of_birth) {
+      setSaveError(t('Η ημερομηνία γέννησης είναι υποχρεωτική', 'Date of birth is required'))
+      return
+    }
 
     setSaving(true)
     setSaveError(null)
@@ -175,7 +179,7 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
     s === 'retired' ? 'var(--text-secondary)' :
     s === 'in_our_memories' ? '#9575cd' : 'var(--text-secondary)'
 
-  const isFormValid = form.name.trim() && form.chip_number.trim() && form.breed_id && form.gender
+  const isFormValid = form.name.trim() && form.chip_number.trim() && form.breed_id && form.gender && form.date_of_birth
 
   return (
     <div>
@@ -305,9 +309,13 @@ export default function MyDogs({ dogs, profile, onSave }: { dogs: any[], profile
             <option value="">{breedsLoading ? t('Φόρτωση...', 'Loading...') : t('Επιλογή φυλής', 'Select breed')}</option>
             {breeds.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
+          
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '-0.5rem', marginBottom: '0.75rem' }}>
+            {t('Ημίαιμα σκυλιά υπάγονται στην κατηγορία mix breed.', 'Mixed breed dogs go under the mix breed category.')}
+          </p>
 
           {/* Date of Birth — native date picker, mobile-friendly */}
-          <label style={labelStyle}>{t('Ημ. Γέννησης', 'Date of Birth')}</label>
+          <label style={labelStyle}>{t('Ημ. Γέννησης', 'Date of Birth')}{requiredDot}</label>
           <input
             type="date"
             style={inputStyle}

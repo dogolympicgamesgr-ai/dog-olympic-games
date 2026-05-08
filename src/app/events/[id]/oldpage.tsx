@@ -110,11 +110,11 @@ export default function EventDetailPage() {
       .eq('status', 'confirmed')
     setAllRegistrations(data || [])
     const { data: results } = await supabase
-      .from('competition_results')
-      .select('dog_id, category_id, score, passed, placement')
-      .eq('event_id', eventId)
-      .eq('status', 'approved')
-    setApprovedResults(results || [])
+  .from('competition_results')
+  .select('dog_id, category_id, score, passed, placement')
+  .eq('event_id', eventId)
+  .eq('status', 'approved')
+setApprovedResults(results || [])
   }
 
   async function loadAssignments(eventId: string, sessionRes: any) {
@@ -145,95 +145,104 @@ export default function EventDetailPage() {
   }
 
   // ── Eligibility check on dog select ──
-  async function handleDogSelect(dogId: string, catId: string) {
-    setSelectedDog(dogId)
-    setEligibilityMsg(null)
-    if (!dogId) return
+async function handleDogSelect(dogId: string, catId: string) {
+  setSelectedDog(dogId)
+  setEligibilityMsg(null)
+  if (!dogId) return
 
-    const cat = categories.find(c => c.id === catId)
-    if (!cat) return
+  const cat = categories.find(c => c.id === catId)
+  if (!cat) return
 
-    const sportId = cat.sports?.id
-    const isFoundation = cat.sports?.is_foundation
-    const isEntry = sportId === ENTRY_SPORT_ID
-    const requiredSublevel = cat.required_sport_level ? parseInt(cat.required_sport_level) : 1
+  const sportId = cat.sports?.id
+  const isFoundation = cat.sports?.is_foundation
+  const isEntry = sportId === ENTRY_SPORT_ID
+  const requiredSublevel = cat.required_sport_level ? parseInt(cat.required_sport_level) : 1
 
-    setEligibilityLoading(true)
+  setEligibilityLoading(true)
 
-    if (isFoundation) {
-      const { data: foundRank } = await supabase
-        .from('foundation_ranking')
-        .select('entry_title, entry_locked, basic_title, basic_locked')
-        .eq('dog_id', dogId)
-        .maybeSingle()
+  if (isFoundation) {
+    const { data: foundRank } = await supabase
+      .from('foundation_ranking')
+      .select('entry_title, entry_locked, basic_title, basic_locked')
+      .eq('dog_id', dogId)
+      .maybeSingle()
 
-      if (isEntry) {
-        if (foundRank?.entry_locked) {
-          setEligibilityMsg(t(
-            'Αυτός ο σκύλος έχει ήδη συμμετάσχει σε Βασικό Επίπεδο και δεν μπορεί να επιστρέψει στο Εισαγωγικό.',
-            'This dog has already competed at Basic Level and cannot return to Entry Level.'
-          ))
-          setSelectedDog('')
-        }
-      } else {
-        if (foundRank?.basic_locked) {
-          setEligibilityMsg(t(
-            'Αυτός ο σκύλος έχει ήδη συμμετάσχει σε αγώνισμα πειθαρχίας και δεν μπορεί να επιστρέψει στο Βασικό Επίπεδο.',
-            'This dog has already competed in a discipline sport and cannot return to Basic Level.'
-          ))
-          setSelectedDog('')
-        } else if (!foundRank?.entry_title) {
-          setEligibilityMsg(t(
-            'Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο Εισαγωγικού Επιπέδου. Απαιτείται για εγγραφή στο Βασικό Επίπεδο.',
-            'This dog has not earned the Entry Level title, which is required for Basic Level.'
-          ))
-          setSelectedDog('')
-        }
+    if (isEntry) {
+      // Entry Level: blocked only if dog has already attempted Basic (entry_locked)
+      if (foundRank?.entry_locked) {
+        setEligibilityMsg(t(
+          'Αυτός ο σκύλος έχει ήδη συμμετάσχει σε Βασικό Επίπεδο και δεν μπορεί να επιστρέψει στο Εισαγωγικό.',
+          'This dog has already competed at Basic Level and cannot return to Entry Level.'
+        ))
+        setSelectedDog('')
       }
+      // Entry is otherwise open to all — no prerequisite
     } else {
-      const { data: foundRank } = await supabase
-        .from('foundation_ranking')
-        .select('basic_title')
-        .eq('dog_id', dogId)
-        .maybeSingle()
-
-      const { data: sportRank } = await supabase
-        .from('dog_sport_ranking')
-        .select('current_sublevel, title')
-        .eq('dog_id', dogId)
-        .eq('sport_id', sportId)
-        .maybeSingle()
-
-      if (sportRank?.title) {
+      // Basic Level: blocked if dog has already attempted a discipline (basic_locked)
+      if (foundRank?.basic_locked) {
         setEligibilityMsg(t(
-          `Αυτός ο σκύλος έχει ολοκληρώσει και τα 3 επίπεδα στο ${cat.sports?.name_el}.`,
-          `This dog has completed all 3 sublevels in ${cat.sports?.name_en}.`
+          'Αυτός ο σκύλος έχει ήδη συμμετάσχει σε αγώνισμα πειθαρχίας και δεν μπορεί να επιστρέψει στο Βασικό Επίπεδο.',
+          'This dog has already competed in a discipline sport and cannot return to Basic Level.'
         ))
         setSelectedDog('')
-      } else if (requiredSublevel === 1 && !foundRank?.basic_title) {
+      } else if (!foundRank?.entry_title) {
+        // Must have Entry title to enter Basic
         setEligibilityMsg(t(
-          'Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο Βασικού Επιπέδου. Απαιτείται για συμμετοχή σε αγωνίσματα πειθαρχίας.',
-          'This dog has not earned the Basic Level title, which is required for discipline sports.'
-        ))
-        setSelectedDog('')
-      } else if (requiredSublevel > 1 && (!sportRank || sportRank.current_sublevel < requiredSublevel)) {
-        const sportName = t(cat.sports?.name_el, cat.sports?.name_en)
-        setEligibilityMsg(t(
-          `Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο ${sportName} Επίπεδο ${requiredSublevel - 1}. Απαιτείται για εγγραφή στο Επίπεδο ${requiredSublevel}.`,
-          `This dog has not earned the ${sportName} Level ${requiredSublevel - 1} title, required for Level ${requiredSublevel}.`
-        ))
-        setSelectedDog('')
-      } else if (sportRank && sportRank.current_sublevel > requiredSublevel) {
-        setEligibilityMsg(t(
-          `Αυτός ο σκύλος βρίσκεται σε επίπεδο ${sportRank.current_sublevel} και δεν μπορεί να κατεβεί σε χαμηλότερο επίπεδο.`,
-          `This dog is at sublevel ${sportRank.current_sublevel} and cannot compete at a lower sublevel.`
+          'Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο Εισαγωγικού Επιπέδου. Απαιτείται για εγγραφή στο Βασικό Επίπεδο.',
+          'This dog has not earned the Entry Level title, which is required for Basic Level.'
         ))
         setSelectedDog('')
       }
     }
+  } else {
+    // Discipline sport
+    const { data: foundRank } = await supabase
+      .from('foundation_ranking')
+      .select('basic_title')
+      .eq('dog_id', dogId)
+      .maybeSingle()
 
-    setEligibilityLoading(false)
+    const { data: sportRank } = await supabase
+      .from('dog_sport_ranking')
+      .select('current_sublevel, title')
+      .eq('dog_id', dogId)
+      .eq('sport_id', sportId)
+      .maybeSingle()
+
+    if (sportRank?.title) {
+      // Completed all sublevels
+      setEligibilityMsg(t(
+        `Αυτός ο σκύλος έχει ολοκληρώσει και τα 3 επίπεδα στο ${cat.sports?.name_el}.`,
+        `This dog has completed all 3 sublevels in ${cat.sports?.name_en}.`
+      ))
+      setSelectedDog('')
+    } else if (requiredSublevel === 1 && !foundRank?.basic_title) {
+      // Level 1 requires Basic title
+      setEligibilityMsg(t(
+        'Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο Βασικού Επιπέδου. Απαιτείται για συμμετοχή σε αγωνίσματα πειθαρχίας.',
+        'This dog has not earned the Basic Level title, which is required for discipline sports.'
+      ))
+      setSelectedDog('')
+    } else if (requiredSublevel > 1 && (!sportRank || sportRank.current_sublevel < requiredSublevel)) {
+      // Level 2/3 requires previous sublevel title
+      const sportName = t(cat.sports?.name_el, cat.sports?.name_en)
+      setEligibilityMsg(t(
+        `Αυτός ο σκύλος δεν έχει κερδίσει τον τίτλο ${sportName} Επίπεδο ${requiredSublevel - 1}. Απαιτείται για εγγραφή στο Επίπεδο ${requiredSublevel}.`,
+        `This dog has not earned the ${sportName} Level ${requiredSublevel - 1} title, required for Level ${requiredSublevel}.`
+      ))
+      setSelectedDog('')
+    } else if (sportRank && sportRank.current_sublevel > requiredSublevel) {
+      // Can't go back to lower sublevel
+      setEligibilityMsg(t(
+        `Αυτός ο σκύλος βρίσκεται σε επίπεδο ${sportRank.current_sublevel} και δεν μπορεί να κατεβεί σε χαμηλότερο επίπεδο.`,
+        `This dog is at sublevel ${sportRank.current_sublevel} and cannot compete at a lower sublevel.`
+      ))
+      setSelectedDog('')
+    }
   }
+
+  setEligibilityLoading(false)
+}
 
   function getQualifiedJudges(categoryId: string | null) {
     if (!categoryId) return availableJudges
@@ -251,49 +260,49 @@ export default function EventDetailPage() {
     })
   }
 
-  async function handleInvite() {
-    if (!selectedInviteUser || !invitingRole || !session?.user) return
-    setAssignLoading(true)
-    setAssignMsg(null)
+async function handleInvite() {
+  if (!selectedInviteUser || !invitingRole || !session?.user) return
+  setAssignLoading(true)
+  setAssignMsg(null)
 
-    const isSelfInvite = selectedInviteUser === session.user.id
-    const status = isSelfInvite ? 'accepted' : 'pending'
+  const isSelfInvite = selectedInviteUser === session.user.id
+  const status = isSelfInvite ? 'accepted' : 'pending'
 
-    const { error } = await supabase.from('event_assignments').insert({
-      event_id: id,
-      category_id: invitingRole.categoryId || null,
-      user_id: selectedInviteUser,
-      role: invitingRole.role,
-      status,
-      assigned_by: session.user.id,
-    })
+  const { error } = await supabase.from('event_assignments').insert({
+    event_id: id,
+    category_id: invitingRole.categoryId || null,
+    user_id: selectedInviteUser,
+    role: invitingRole.role,
+    status,
+    assigned_by: session.user.id,
+  })
 
-    if (error) {
-      setAssignMsg({ type: 'error', text: t('Σφάλμα. Ίσως έχει ήδη προσκληθεί.', 'Error. They may already be invited.') })
-    } else {
-      const categoryLabel = invitingRole.categoryId
-        ? categories.find(c => c.id === invitingRole.categoryId)?.title_el || '' : ''
-      const eventTitle = event?.title_el || ''
-      const roleLabel = invitingRole.role === 'judge' ? 'Κριτής' : 'Decοy'
-      const roleLabelEn = invitingRole.role === 'judge' ? 'Judge' : 'Decoy'
+  if (error) {
+    setAssignMsg({ type: 'error', text: t('Σφάλμα. Ίσως έχει ήδη προσκληθεί.', 'Error. They may already be invited.') })
+  } else {
+    const categoryLabel = invitingRole.categoryId
+      ? categories.find(c => c.id === invitingRole.categoryId)?.title_el || '' : ''
+    const eventTitle = event?.title_el || ''
+    const roleLabel = invitingRole.role === 'judge' ? 'Κριτής' : 'Decοy'
+    const roleLabelEn = invitingRole.role === 'judge' ? 'Judge' : 'Decoy'
 
-      if (!isSelfInvite) {
-        await supabase.from('notifications').insert({
-          user_id: selectedInviteUser, type: 'assignment_request',
-          title_el: `Πρόσκληση ως ${roleLabel}`, title_en: `Invitation as ${roleLabelEn}`,
-          message_el: `Έχεις προσκληθεί ως ${roleLabel}${categoryLabel ? ` για την κατηγορία "${categoryLabel}"` : ''} στον αγώνα "${eventTitle}".`,
-          message_en: `You have been invited as ${roleLabelEn}${categoryLabel ? ` for category "${categoryLabel}"` : ''} in event "${eventTitle}".`,
-          metadata: { event_id: id, role: invitingRole.role, category_id: invitingRole.categoryId },
-        })
-      }
-
-      setAssignMsg({ type: 'success', text: t('Προστέθηκες!', isSelfInvite ? 'Added!' : 'Invitation sent!') })
-      setInvitingRole(null)
-      setSelectedInviteUser('')
-      await loadAssignments(id as string, session)
+    if (!isSelfInvite) {
+      await supabase.from('notifications').insert({
+        user_id: selectedInviteUser, type: 'assignment_request',
+        title_el: `Πρόσκληση ως ${roleLabel}`, title_en: `Invitation as ${roleLabelEn}`,
+        message_el: `Έχεις προσκληθεί ως ${roleLabel}${categoryLabel ? ` για την κατηγορία "${categoryLabel}"` : ''} στον αγώνα "${eventTitle}".`,
+        message_en: `You have been invited as ${roleLabelEn}${categoryLabel ? ` for category "${categoryLabel}"` : ''} in event "${eventTitle}".`,
+        metadata: { event_id: id, role: invitingRole.role, category_id: invitingRole.categoryId },
+      })
     }
-    setAssignLoading(false)
+
+    setAssignMsg({ type: 'success', text: t('Προστέθηκες!', isSelfInvite ? 'Added!' : 'Invitation sent!') })
+    setInvitingRole(null)
+    setSelectedInviteUser('')
+    await loadAssignments(id as string, session)
   }
+  setAssignLoading(false)
+}
 
   async function handleRemoveAssignment(assignmentId: string) {
     setAssignLoading(true)
@@ -369,6 +378,7 @@ export default function EventDetailPage() {
     if (!ev.registration_deadline) return isUpcoming(ev.event_date)
     return new Date() < new Date(ev.registration_deadline)
   }
+  function getUserRegForCat(catId: string) { return registrations.find(r => r.category_id === catId) }
 
   const assignStatusColor = (s: string) => s === 'accepted' ? '#7ef7a0' : s === 'declined' ? '#f77e7e' : 'var(--accent)'
   const assignStatusLabel = (s: string) =>
@@ -411,7 +421,7 @@ export default function EventDetailPage() {
 
   const cardStyle: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '14px', padding: '1.25rem', marginBottom: '1rem' }
   const sectionTitle: React.CSSProperties = { fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', color: 'var(--accent)', margin: '0 0 1rem', letterSpacing: '0.04em' }
-  const actionBtnStyle: React.CSSProperties = { width: '100%', border: 'none', borderRadius: '10px', padding: '0.85rem 1rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', letterSpacing: '0.04em', textAlign: 'center' }
+  const actionBtnStyle: React.CSSProperties = { flex: 1, border: 'none', borderRadius: '10px', padding: '0.85rem 1rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Bebas Neue, sans-serif', fontSize: '1rem', letterSpacing: '0.04em', textAlign: 'center' }
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--bg)', paddingTop: 'calc(var(--nav-height) + 2rem)', paddingBottom: '3rem' }}>
@@ -444,9 +454,9 @@ export default function EventDetailPage() {
           🏆 {title}
         </h1>
 
-        {/* Action buttons — MOBILE: stacked */}
+        {/* Action buttons */}
         {(canManageAttendance || isAssignedJudge || canReviewResults) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             {canManageAttendance && (
               <button onClick={() => router.push(`/events/${id}/attendance`)} style={{ ...actionBtnStyle, background: 'var(--accent)', color: 'var(--bg)' }}>
                 📋 {t('Παρουσίες & Κλείσιμο', 'Attendance & Close')}
@@ -555,8 +565,7 @@ export default function EventDetailPage() {
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {categories.map((cat: any) => {
-              const userRegs = registrations.filter(r => r.category_id === cat.id)
-              const registeredDogIds = new Set(userRegs.map(r => r.dog_id))
+              const userReg = getUserRegForCat(cat.id)
               const isRegistering = registeringCat === cat.id
               const sportName = t(cat.sports?.name_el, cat.sports?.name_en || cat.sports?.name_el)
               const catJudges = visibleJudges.filter(a => a.category_id === cat.id)
@@ -566,8 +575,7 @@ export default function EventDetailPage() {
 
               return (
                 <div key={cat.id} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
-                  {/* MOBILE: stacked column layout */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div>
                       <p style={{ margin: '0 0 0.2rem', fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
                         {cat.is_championship && '🥇 '}
@@ -588,34 +596,25 @@ export default function EventDetailPage() {
                           ⚖️ {t('+ Κριτής', '+ Judge')}
                         </button>
                       )}
-                      {userRegs.length > 0 ? (
-                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {userRegs.map((reg: any) => {
-                            const dogName = userDogs.find(d => d.id === reg.dog_id)?.name || '—'
+                      {userReg ? (
+                        <div style={{ width: '100%' }}>
+                          {(() => {
+                            const dogName = userDogs.find(d => d.id === userReg.dog_id)?.name || '—'
                             const catTitle = t(cat.title_el, cat.title_en || cat.title_el)
-                            const canCancel = reg.status === 'confirmed' && !['completed','cancelled','results_approved'].includes(event.status) && new Date(event.event_date) > new Date()
+                            const canCancel = userReg.status === 'confirmed' && !['completed','cancelled','results_approved'].includes(event.status) && new Date(event.event_date) > new Date()
                             return (
-                              <div key={reg.id} style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)', borderRadius: '10px', padding: '0.6rem 0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                              <div style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid rgba(212,175,55,0.25)', borderRadius: '10px', padding: '0.6rem 0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                                 <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
                                   🐕 {t(`Έχεις δηλώσει συμμετοχή με τον/την ${dogName} στην κατηγορία ${catTitle}`, `You registered ${dogName} for ${catTitle}`)}
                                 </p>
                                 {canCancel && (
-                                  <button onClick={() => handleCancelReg(reg.id)} disabled={regLoading} style={{ background: 'none', border: '1px solid #f77e7e', borderRadius: '6px', padding: '0.3rem 0.65rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap' }}>
+                                  <button onClick={() => handleCancelReg(userReg.id)} disabled={regLoading} style={{ background: 'none', border: '1px solid #f77e7e', borderRadius: '6px', padding: '0.3rem 0.65rem', color: '#f77e7e', cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'Outfit, sans-serif', whiteSpace: 'nowrap' }}>
                                     {t('Ακύρωση Συμμετοχής', 'Cancel Registration')}
                                   </button>
                                 )}
                               </div>
                             )
-                          })}
-                          {/* Show register button if user has more dogs available */}
-                          {isLoggedIn && regOpen && upcoming && !isLocked && userDogs.some(d => !registeredDogIds.has(d.id)) && (
-                            <button
-                              onClick={() => { setRegisteringCat(isRegistering ? null : cat.id); setSelectedDog(''); setEligibilityMsg(null); setRegMsg(null) }}
-                              style={{ background: 'var(--bg)', border: '1px dashed var(--accent)', borderRadius: '8px', padding: '0.4rem 0.9rem', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '0.8rem', alignSelf: 'flex-start' }}
-                            >
-                              + {t('Εγγραφή Άλλου Σκύλου', 'Register Another Dog')}
-                            </button>
-                          )}
+                          })()}
                         </div>
                       ) : (
                         isLoggedIn && regOpen && upcoming && !isLocked && (
@@ -651,12 +650,12 @@ export default function EventDetailPage() {
                     </div>
                   )}
 
-                  {/* Invite judge — MOBILE: stacked */}
+                  {/* Invite judge */}
                   {isInvitingJudgeHere && (
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
                       {assignMsg && <p style={{ fontSize: '0.8rem', color: assignMsg.type === 'success' ? '#00c864' : '#dc3232', marginBottom: '0.5rem' }}>{assignMsg.text}</p>}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)} style={{ width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)} style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
                           <option value="">
                             {qualifiedJudges.length === 0 ? t('Κανένας κριτής δεν είναι κατάλληλος', 'No qualified judges available') : t('Επίλεξε κριτή...', 'Select judge...')}
                           </option>
@@ -664,7 +663,7 @@ export default function EventDetailPage() {
                             <option key={j.user_id} value={j.user_id}>{j.profiles?.full_name} #{j.profiles?.member_id}</option>
                           ))}
                         </select>
-                        <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading || qualifiedJudges.length === 0} style={{ width: '100%', background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
+                        <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading || qualifiedJudges.length === 0} style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
                           {assignLoading ? '...' : t('Αποστολή', 'Send')}
                         </button>
                       </div>
@@ -676,26 +675,26 @@ export default function EventDetailPage() {
                     </div>
                   )}
 
-                  {/* Registration picker — MOBILE: stacked, filters out registered dogs */}
-                  {isRegistering && userDogs.some(d => !registeredDogIds.has(d.id)) && (
+                  {/* Registration picker */}
+                  {isRegistering && !userReg && (
                     <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
                       {userDogs.length === 0 ? (
                         <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{t('Δεν έχεις σκύλους στο προφίλ σου.', 'You have no dogs on your profile.')}</p>
                       ) : (
                         <>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                             <select
                               value={selectedDog}
                               onChange={e => handleDogSelect(e.target.value, cat.id)}
-                              style={{ width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.55rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}
+                              style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.55rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}
                             >
                               <option value="">{t('Επίλεξε σκύλο...', 'Select dog...')}</option>
-                              {userDogs.filter(dog => !registeredDogIds.has(dog.id)).map(dog => <option key={dog.id} value={dog.id}>{dog.name} ({dog.dog_id})</option>)}
+                              {userDogs.map(dog => <option key={dog.id} value={dog.id}>{dog.name} ({dog.dog_id})</option>)}
                             </select>
                             <button
                               onClick={() => handleRegister(cat.id)}
                               disabled={!selectedDog || regLoading || eligibilityLoading || !!eligibilityMsg}
-                              style={{ width: '100%', background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.55rem 1.1rem', color: 'var(--bg)', fontWeight: 700, cursor: (selectedDog && !eligibilityMsg) ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: (selectedDog && !eligibilityMsg) ? 1 : 0.6 }}
+                              style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.55rem 1.1rem', color: 'var(--bg)', fontWeight: 700, cursor: (selectedDog && !eligibilityMsg) ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: (selectedDog && !eligibilityMsg) ? 1 : 0.6 }}
                             >
                               {eligibilityLoading ? '...' : regLoading ? '...' : t('Υποβολή', 'Submit')}
                             </button>
@@ -736,13 +735,12 @@ export default function EventDetailPage() {
           {invitingRole?.role === 'decoy' && (
             <div style={{ marginBottom: '1rem' }}>
               {assignMsg && <p style={{ fontSize: '0.8rem', color: assignMsg.type === 'success' ? '#00c864' : '#dc3232', marginBottom: '0.5rem' }}>{assignMsg.text}</p>}
-              {/* MOBILE: stacked */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)} style={{ width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <select value={selectedInviteUser} onChange={e => setSelectedInviteUser(e.target.value)} style={{ flex: 1, minWidth: '160px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'Outfit, sans-serif', outline: 'none', cursor: 'pointer' }}>
                   <option value="">{t('Επίλεξε Decοy...', 'Select decoy...')}</option>
                   {availableDecoys.map((d: any) => <option key={d.user_id} value={d.user_id}>{d.profiles?.full_name} #{d.profiles?.member_id}</option>)}
                 </select>
-                <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading} style={{ width: '100%', background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
+                <button onClick={handleInvite} disabled={!selectedInviteUser || assignLoading} style={{ background: 'var(--accent)', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', color: 'var(--bg)', fontWeight: 700, cursor: selectedInviteUser ? 'pointer' : 'not-allowed', fontFamily: 'Outfit, sans-serif', fontSize: '0.85rem', opacity: selectedInviteUser ? 1 : 0.6 }}>
                   {assignLoading ? '...' : t('Αποστολή', 'Send')}
                 </button>
               </div>
@@ -836,44 +834,44 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* Map — with directions button overlay */}
-        {event.lat && event.lng && (
-          <div style={{ ...cardStyle, padding: 0, overflow: 'hidden', position: 'relative' }}>
-            <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
-              <p style={sectionTitle}>📍 {t('Τοποθεσία', 'Location')}</p>
-            </div>
-            <div style={{ height: '220px', position: 'relative' }}>
-              <MapView lat={event.lat} lng={event.lng} label={event.location} />
-              
-              {/* Directions button overlay */}
-              <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  position: 'absolute',
-                  bottom: '12px',
-                  right: '12px',
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--accent)',
-                  borderRadius: '8px',
-                  padding: '0.5rem 0.85rem',
-                  color: 'var(--accent)',
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                  zIndex: 10,
-                }}
-              >
-                🧭 {t('Οδηγίες', 'Directions')}
-              </a>
-            </div>
-          </div>
-        )}
+       {/* Map */}
+{event.lat && event.lng && (
+  <div style={{ ...cardStyle, padding: 0, overflow: 'hidden', position: 'relative' }}>
+    <div style={{ padding: '1rem 1.25rem 0.5rem' }}>
+      <p style={sectionTitle}>📍 {t('Τοποθεσία', 'Location')}</p>
+    </div>
+    <div style={{ height: '220px', position: 'relative' }}>
+      <MapView lat={event.lat} lng={event.lng} label={event.location} />
+      
+      {/* Directions button overlay */}
+      <a
+        href={`https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          position: 'absolute',
+          bottom: '12px',
+          right: '12px',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--accent)',
+          borderRadius: '8px',
+          padding: '0.5rem 0.85rem',
+          color: 'var(--accent)',
+          fontWeight: 700,
+          fontSize: '0.8rem',
+          textDecoration: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          zIndex: 10,
+        }}
+      >
+        🧭 {t('Οδηγίες', 'Directions')}
+      </a>
+    </div>
+  </div>
+)}
 
         {/* Contact */}
         {(event.contact_name || event.contact_phone || event.contact_email) && (
